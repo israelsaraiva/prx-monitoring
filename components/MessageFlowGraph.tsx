@@ -57,7 +57,7 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
 
   if (messages.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="h-full flex flex-col items-center justify-center py-16 text-center">
         <div className="h-16 w-16 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 flex items-center justify-center mb-4">
           <Hash className="h-8 w-8 text-purple-600 dark:text-purple-400" />
         </div>
@@ -70,7 +70,7 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
   }
 
   return (
-    <div className="space-y-6 sm:space-y-8 max-h-[600px] sm:max-h-[800px] overflow-y-auto pr-2">
+    <div className="h-full overflow-y-auto pr-2 space-y-6 sm:space-y-8">
       {flowGroups.map((group, groupIdx) => (
         <div key={group.flowId} className="space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 pb-2 border-b border-purple-200/50 dark:border-purple-800/30">

@@ -392,8 +392,8 @@ export function KafkaListener({
   }, []);
 
   return (
-    <div className="flex flex-col">
-      <Card className="border-2 border-teal-200/50 shadow-lg bg-gradient-to-br from-white to-teal-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-teal-800/30 flex flex-col">
+    <div className="flex flex-col lg:h-full">
+      <Card className="border-2 border-teal-200/50 shadow-lg bg-gradient-to-br from-white to-teal-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-teal-800/30 flex flex-col lg:h-full">
         <CardHeader className="pb-4 flex-shrink-0">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 sm:gap-3">
@@ -426,7 +426,7 @@ export function KafkaListener({
             topics
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-5 lg:flex-1 lg:overflow-y-auto lg:min-h-0">
           {/* Broker Configuration Management */}
           <div className="border border-slate-200/60 dark:border-slate-700/40 rounded-lg p-4 bg-slate-50/50 dark:bg-slate-900/20">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
@@ -607,7 +607,7 @@ export function KafkaListener({
             )}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-1">
+            <div className="grid gap-4">
             <div className="space-y-2">
               <Label htmlFor="broker" className="text-sm font-medium">
                 Broker Endpoint(s)
