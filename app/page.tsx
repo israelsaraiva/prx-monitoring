@@ -67,7 +67,7 @@ export default function Home() {
 
   return (
     <div className='h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950'>
-      <div className='h-full max-w-fit mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8 flex flex-col'>
+      <div className='h-full max-w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8 flex flex-col'>
         <div className='mb-4 sm:mb-6 flex-shrink-0'>
           <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-2'>
             <div className='flex items-center gap-2 sm:gap-3'>

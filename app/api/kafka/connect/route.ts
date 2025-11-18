@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await consumer.subscribe({ topics: topicList, fromBeginning: true });
+      await consumer.subscribe({ topics: topicList, fromBeginning: false });
     } catch (error) {
       await consumer.disconnect();
       return Response.json(
