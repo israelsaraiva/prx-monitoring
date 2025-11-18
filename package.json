@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "kafka:up": "docker-compose up -d",
+    "kafka:down": "docker-compose down",
+    "kafka:logs": "docker-compose logs -f kafka",
+    "kafka:status": "docker-compose ps",
+    "kafka:produce": "node scripts/produce-test-messages.js"
   },
   "dependencies": {
     "@apollo/client": "^3.9.0",
