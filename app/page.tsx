@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { Activity, Database } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface GraphQLMessage {
   id: string;
@@ -28,12 +28,21 @@ interface KafkaMessage {
   flowIdSource?: string;
 }
 
+const STORAGE_KEYS = {
+  graphQLEndpoint: 'graphql-endpoint',
+  graphQLQuery: 'graphql-query',
+  graphQLHeaders: 'graphql-headers',
+  kafkaBroker: 'kafka-broker',
+  kafkaTopics: 'kafka-topics',
+};
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState('graphql');
 
   // GraphQL Subscription state
   const [graphQLEndpoint, setGraphQLEndpoint] = useState('');
   const [graphQLQuery, setGraphQLQuery] = useState('');
+  const [graphQLHeaders, setGraphQLHeaders] = useState('');
   const [graphQLMessages, setGraphQLMessages] = useState<GraphQLMessage[]>([]);
   const [isGraphQLConnected, setIsGraphQLConnected] = useState(false);
 
@@ -43,6 +52,78 @@ export default function Home() {
   const [kafkaMessages, setKafkaMessages] = useState<KafkaMessage[]>([]);
   const [isKafkaConnected, setIsKafkaConnected] = useState(false);
 
+  // Load from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedEndpoint = localStorage.getItem(STORAGE_KEYS.graphQLEndpoint);
+      const savedQuery = localStorage.getItem(STORAGE_KEYS.graphQLQuery);
+      const savedHeaders = localStorage.getItem(STORAGE_KEYS.graphQLHeaders);
+      const savedBroker = localStorage.getItem(STORAGE_KEYS.kafkaBroker);
+      const savedTopics = localStorage.getItem(STORAGE_KEYS.kafkaTopics);
+
+      if (savedEndpoint) setGraphQLEndpoint(savedEndpoint);
+      if (savedQuery) setGraphQLQuery(savedQuery);
+      if (savedHeaders) setGraphQLHeaders(savedHeaders);
+      if (savedBroker) setKafkaBroker(savedBroker);
+      if (savedTopics) setKafkaTopics(savedTopics);
+    }
+  }, []);
+
+  // Save GraphQL endpoint to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (graphQLEndpoint) {
+        localStorage.setItem(STORAGE_KEYS.graphQLEndpoint, graphQLEndpoint);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.graphQLEndpoint);
+      }
+    }
+  }, [graphQLEndpoint]);
+
+  // Save GraphQL query to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (graphQLQuery) {
+        localStorage.setItem(STORAGE_KEYS.graphQLQuery, graphQLQuery);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.graphQLQuery);
+      }
+    }
+  }, [graphQLQuery]);
+
+  // Save GraphQL headers to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (graphQLHeaders) {
+        localStorage.setItem(STORAGE_KEYS.graphQLHeaders, graphQLHeaders);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.graphQLHeaders);
+      }
+    }
+  }, [graphQLHeaders]);
+
+  // Save Kafka broker to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (kafkaBroker) {
+        localStorage.setItem(STORAGE_KEYS.kafkaBroker, kafkaBroker);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.kafkaBroker);
+      }
+    }
+  }, [kafkaBroker]);
+
+  // Save Kafka topics to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (kafkaTopics) {
+        localStorage.setItem(STORAGE_KEYS.kafkaTopics, kafkaTopics);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.kafkaTopics);
+      }
+    }
+  }, [kafkaTopics]);
+
   // GraphQL handlers
   const handleGraphQLDisconnect = () => {
     setIsGraphQLConnected(false);
@@ -51,7 +132,13 @@ export default function Home() {
   const handleGraphQLClear = () => {
     setGraphQLEndpoint('');
     setGraphQLQuery('');
+    setGraphQLHeaders('');
     setGraphQLMessages([]);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEYS.graphQLEndpoint);
+      localStorage.removeItem(STORAGE_KEYS.graphQLQuery);
+      localStorage.removeItem(STORAGE_KEYS.graphQLHeaders);
+    }
   };
 
   // Kafka handlers
@@ -63,6 +150,10 @@ export default function Home() {
     setKafkaBroker('');
     setKafkaTopics('');
     setKafkaMessages([]);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEYS.kafkaBroker);
+      localStorage.removeItem(STORAGE_KEYS.kafkaTopics);
+    }
   };
 
   return (
@@ -98,7 +189,20 @@ export default function Home() {
           </TabsList>
           <div className='relative flex-1 min-h-0'>
             <div className={activeTab === 'graphql' ? 'h-full' : 'hidden'}>
-              <GraphQLSubscription endpoint={graphQLEndpoint} setEndpoint={setGraphQLEndpoint} subscriptionQuery={graphQLQuery} setSubscriptionQuery={setGraphQLQuery} messages={graphQLMessages} setMessages={setGraphQLMessages} isConnected={isGraphQLConnected} setIsConnected={setIsGraphQLConnected} onDisconnect={handleGraphQLDisconnect} onClear={handleGraphQLClear} />
+              <GraphQLSubscription
+                endpoint={graphQLEndpoint}
+                setEndpoint={setGraphQLEndpoint}
+                subscriptionQuery={graphQLQuery}
+                setSubscriptionQuery={setGraphQLQuery}
+                headers={graphQLHeaders}
+                setHeaders={setGraphQLHeaders}
+                messages={graphQLMessages}
+                setMessages={setGraphQLMessages}
+                isConnected={isGraphQLConnected}
+                setIsConnected={setIsGraphQLConnected}
+                onDisconnect={handleGraphQLDisconnect}
+                onClear={handleGraphQLClear}
+              />
             </div>
             <div className={activeTab === 'kafka' ? 'h-full' : 'hidden'}>
               <div className='flex flex-col lg:flex-row gap-4 lg:gap-6 h-full items-stretch'>

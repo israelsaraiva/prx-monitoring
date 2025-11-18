@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Play, Square, Trash2, Database, Clock, Copy, CheckCircle2, XCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Client, createClient, SubscribePayload } from 'graphql-ws';
+import { CheckCircle2, Clock, Copy, Database, Play, Square, Trash2, XCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { GraphQLCodeEditor } from './GraphQLCodeEditor';
 import { JsonViewer } from './JsonViewer';
@@ -24,6 +24,8 @@ interface GraphQLSubscriptionProps {
   setEndpoint: (value: string) => void;
   subscriptionQuery: string;
   setSubscriptionQuery: (value: string) => void;
+  headers: string;
+  setHeaders: (value: string) => void;
   messages: ReceivedMessage[];
   setMessages: (messages: ReceivedMessage[] | ((prev: ReceivedMessage[]) => ReceivedMessage[])) => void;
   isConnected: boolean;
@@ -32,31 +34,43 @@ interface GraphQLSubscriptionProps {
   onClear: () => void;
 }
 
-export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, setSubscriptionQuery, messages, setMessages, isConnected, setIsConnected, onDisconnect, onClear }: GraphQLSubscriptionProps) {
+export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, setSubscriptionQuery, headers, setHeaders, messages, setMessages, isConnected, setIsConnected, onDisconnect, onClear }: GraphQLSubscriptionProps) {
   const clientRef = useRef<Client | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const [isSubscribed, setIsSubscribed] = useState(false);
 
-  const connect = async () => {
-    if (!endpoint || !subscriptionQuery) {
-      toast.error('Missing Information', {
-        description: 'Please provide both endpoint and subscription query',
+  const unsubscribe = () => {
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+    setIsSubscribed(false);
+    toast.info('Unsubscribed', {
+      description: 'GraphQL subscription stopped',
+    });
+  };
+
+  const subscribe = async () => {
+    if (!isConnected || !clientRef.current) {
+      toast.error('Not Connected', {
+        description: 'Please connect to the endpoint first',
       });
       return;
     }
 
-    if (isConnected) {
-      disconnect();
+    if (!subscriptionQuery.trim()) {
+      toast.error('Missing Query', {
+        description: 'Please provide a subscription query',
+      });
       return;
+    }
+
+    if (isSubscribed) {
+      unsubscribe();
     }
 
     try {
-      const client = createClient({
-        url: endpoint,
-      });
-
-      clientRef.current = client;
-
-      const unsubscribe = client.subscribe(
+      const unsubscribeFn = clientRef.current.subscribe(
         {
           query: subscriptionQuery,
         } as SubscribePayload,
@@ -71,26 +85,92 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
           },
           error: (err) => {
             console.error('Subscription error:', err);
-            const errorMessage: ReceivedMessage = {
+            let errorMessage = 'Unknown error';
+            if (err instanceof Error) {
+              errorMessage = err.message;
+            } else if (err && typeof err === 'object' && 'message' in err) {
+              errorMessage = String(err.message);
+            } else if (err && typeof err === 'object' && 'type' in err && err.type === 'close') {
+              errorMessage = 'WebSocket connection closed unexpectedly';
+            } else {
+              errorMessage = String(err);
+            }
+            const errorMsg: ReceivedMessage = {
               id: Date.now().toString(),
               timestamp: new Date(),
-              data: `Error: ${err instanceof Error ? err.message : String(err)}`,
+              data: `Error: ${errorMessage}`,
             };
-            setMessages((prev) => [errorMessage, ...prev]);
-            setIsConnected(false);
+            setMessages((prev) => [errorMsg, ...prev]);
+            setIsSubscribed(false);
+            toast.error('Subscription Error', {
+              description: errorMessage,
+            });
           },
           complete: () => {
             console.log('Subscription completed');
-            setIsConnected(false);
+            setIsSubscribed(false);
           },
         }
       );
 
-      unsubscribeRef.current = unsubscribe;
+      unsubscribeRef.current = unsubscribeFn;
+      setIsSubscribed(true);
+      toast.success('Subscribed', {
+        description: 'Successfully subscribed to GraphQL query',
+      });
+    } catch (error) {
+      console.error('Subscription error:', error);
+      toast.error('Subscription Failed', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+      setIsSubscribed(false);
+    }
+  };
+
+  const connect = async () => {
+    if (!endpoint) {
+      toast.error('Missing Information', {
+        description: 'Please provide an endpoint URL',
+      });
+      return;
+    }
+
+    if (isConnected) {
+      disconnect();
+      return;
+    }
+
+    try {
+      let connectionParams: Record<string, unknown> = {};
+
+      if (headers.trim()) {
+        try {
+          const parsedHeaders = JSON.parse(headers);
+          if (typeof parsedHeaders === 'object' && parsedHeaders !== null) {
+            connectionParams = parsedHeaders;
+          }
+        } catch (parseError) {
+          toast.error('Invalid Headers', {
+            description: 'Headers must be valid JSON. Please check your input.',
+          });
+          return;
+        }
+      }
+
+      const client = createClient({
+        url: endpoint,
+        connectionParams: connectionParams,
+      });
+
+      clientRef.current = client;
       setIsConnected(true);
       toast.success('Connected', {
-        description: 'Successfully connected to GraphQL subscription',
+        description: 'Successfully connected to GraphQL endpoint',
       });
+
+      if (subscriptionQuery.trim()) {
+        subscribe();
+      }
     } catch (error) {
       console.error('Connection error:', error);
       toast.error('Connection Failed', {
@@ -110,9 +190,10 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
       clientRef.current = null;
     }
     setIsConnected(false);
+    setIsSubscribed(false);
     onDisconnect();
     toast.info('Disconnected', {
-      description: 'GraphQL subscription disconnected',
+      description: 'GraphQL connection closed',
     });
   };
 
@@ -147,23 +228,40 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
               </div>
               <div>
                 <CardTitle className='text-xl sm:text-2xl'>GraphQL Subscription</CardTitle>
-                <CardDescription className='mt-1 text-xs sm:text-sm'>Connect to a GraphQL subscription endpoint and receive real-time messages</CardDescription>
               </div>
             </div>
-            <Badge variant={isConnected ? 'success' : 'secondary'} className='gap-1.5 text-xs sm:text-sm'>
-              {isConnected ? (
-                <>
-                  <div className='h-2 w-2 rounded-full bg-green-500 animate-pulse' />
-                  Connected
-                </>
-              ) : (
-                <>
-                  <XCircle className='h-3 w-3' />
-                  Disconnected
-                </>
+            <div className='flex flex-col gap-1 items-end'>
+              <Badge variant={isConnected ? 'success' : 'secondary'} className='gap-1.5 text-xs sm:text-sm'>
+                {isConnected ? (
+                  <>
+                    <div className='h-2 w-2 rounded-full bg-green-500 animate-pulse' />
+                    Connected
+                  </>
+                ) : (
+                  <>
+                    <XCircle className='h-3 w-3' />
+                    Disconnected
+                  </>
+                )}
+              </Badge>
+              {isConnected && (
+                <Badge variant={isSubscribed ? 'success' : 'secondary'} className='gap-1.5 text-xs'>
+                  {isSubscribed ? (
+                    <>
+                      <div className='h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse' />
+                      Subscribed
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className='h-2.5 w-2.5' />
+                      Not Subscribed
+                    </>
+                  )}
+                </Badge>
               )}
-            </Badge>
+            </div>
           </div>
+          <CardDescription className='mt-1 text-xs sm:text-sm'>Connect to a GraphQL subscription endpoint and receive real-time messages</CardDescription>
         </CardHeader>
         <CardContent className='space-y-5'>
           <div className='space-y-4 flex-shrink-0'>
@@ -174,14 +272,15 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
               <Input id='endpoint' placeholder='ws://localhost:4000/graphql' value={endpoint} onChange={(e) => setEndpoint(e.target.value)} disabled={isConnected} className='h-10' />
             </div>
             <div className='space-y-2'>
-              <Label htmlFor='query' className='text-sm font-medium'>
-                Subscription Query
+              <Label htmlFor='headers' className='text-sm font-medium'>
+                Headers (JSON)
               </Label>
-              <GraphQLCodeEditor value={subscriptionQuery} onChange={setSubscriptionQuery} disabled={isConnected} placeholder='subscription { messageAdded { id content } }' />
+              <Textarea id='headers' placeholder='{"Authorization": "Bearer token", "X-Custom-Header": "value"}' value={headers} onChange={(e) => setHeaders(e.target.value)} disabled={isConnected} className='font-mono text-sm min-h-[80px] rounded-md border-slate-200/60 dark:border-slate-700/40 focus:border-blue-500/60 dark:focus:border-blue-400/60 transition-colors' />
+              <p className='text-xs text-muted-foreground'>Optional: Add headers as JSON object. These will be sent with the connection.</p>
             </div>
           </div>
-          <div className='flex flex-col sm:flex-row gap-3 pt-2 flex-shrink-0'>
-            <Button onClick={connect} variant={isConnected ? 'destructive' : 'default'} size='lg' className='w-full sm:min-w-[140px] sm:w-auto'>
+          <div className='flex flex-col gap-3 pt-2 flex-shrink-0'>
+            <Button onClick={connect} variant={isConnected ? 'destructive' : 'default'} size='lg' className='w-full'>
               {isConnected ? (
                 <>
                   <Square className='mr-2 h-4 w-4' />
@@ -194,7 +293,34 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
                 </>
               )}
             </Button>
-            <Button onClick={() => setMessages([])} variant='outline' size='lg' className='w-full sm:w-auto'>
+          </div>
+          {isConnected && (
+            <div className='space-y-4 flex-shrink-0 pt-2 border-t border-slate-200/60 dark:border-slate-700/40'>
+              <div className='space-y-2'>
+                <Label htmlFor='query' className='text-sm font-medium'>
+                  Subscription Query
+                </Label>
+                <GraphQLCodeEditor value={subscriptionQuery} onChange={setSubscriptionQuery} disabled={isSubscribed} placeholder='subscription { messageAdded { id content } }' />
+              </div>
+              <div className='flex flex-col gap-3'>
+                <Button onClick={isSubscribed ? unsubscribe : subscribe} variant={isSubscribed ? 'destructive' : 'default'} size='lg' className='w-full' disabled={!subscriptionQuery.trim()}>
+                  {isSubscribed ? (
+                    <>
+                      <Square className='mr-2 h-4 w-4' />
+                      Unsubscribe
+                    </>
+                  ) : (
+                    <>
+                      <Play className='mr-2 h-4 w-4' />
+                      Subscribe
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+          <div className='flex flex-col gap-3 pt-2 flex-shrink-0'>
+            <Button onClick={() => setMessages([])} variant='outline' size='lg' className='w-full'>
               <Trash2 className='mr-2 h-4 w-4' />
               Clear Messages
             </Button>
