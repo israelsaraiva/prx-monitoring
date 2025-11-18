@@ -166,7 +166,7 @@ export default function Home() {
                 <Activity className='h-4 w-4 sm:h-6 sm:w-6 text-white' />
               </div>
               <div>
-                <h1 className='text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight'>Subscriber Tool</h1>
+                <h1 className='text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight'>MACC Monitoring Tool</h1>
                 <p className='text-sm sm:text-base text-muted-foreground mt-1'>Real-time message monitoring and visualization</p>
               </div>
             </div>

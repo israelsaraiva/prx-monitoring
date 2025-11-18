@@ -1,4 +1,3 @@
-import { JsonViewer } from '@/components/JsonViewer';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertCircle, ArrowDown, CheckCircle2, ChevronRight, Clock, FileText, Hash, Server, XCircle } from 'lucide-react';
@@ -265,7 +264,7 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
                                         </Badge>
                                       )}
                                     </div>
-                                    <JsonViewer value={msg.value} maxHeight='250px' />
+                                    <div className='font-mono text-xs min-h-[150px] max-h-[250px] rounded-md border border-purple-200/60 dark:border-purple-800/40 bg-purple-50/30 dark:bg-purple-950/20 p-3 overflow-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words'>{msg.value}</div>
                                   </div>
                                 </div>
                               )}

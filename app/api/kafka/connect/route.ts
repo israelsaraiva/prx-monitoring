@@ -100,6 +100,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Add consumer to map first so messages can be queued if EventSource isn't ready yet
+    const stop = async () => {
+      try {
+        await consumer.stop();
+        await consumer.disconnect();
+      } catch (error) {
+        console.error(`Error stopping consumer ${consumerId}:`, error);
+      }
+      consumers.delete(consumerId);
+    };
+
+    consumers.set(consumerId, { consumer, runPromise: null, stop });
+
     const runPromise = consumer
       .run({
         eachMessage: async ({ topic, partition, message }: EachMessagePayload) => {
@@ -199,17 +212,15 @@ export async function POST(request: NextRequest) {
         consumers.delete(consumerId);
       });
 
-    const stop = async () => {
-      try {
-        await consumer.stop();
-        await consumer.disconnect();
-      } catch (error) {
-        console.error(`Error stopping consumer ${consumerId}:`, error);
-      }
-      consumers.delete(consumerId);
-    };
+    // Update the runPromise in the map
+    const consumerData = consumers.get(consumerId);
+    if (consumerData) {
+      consumerData.runPromise = runPromise;
+    }
 
-    consumers.set(consumerId, { consumer, runPromise, stop });
+    // Wait for the consumer to join the consumer group and be ready to receive messages
+    // This ensures messages produced after connection will be received
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     return Response.json({ success: true, consumerId });
   } catch (error) {

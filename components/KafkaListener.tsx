@@ -201,55 +201,30 @@ export function KafkaListener({ broker, setBroker, topics, setTopics, messages, 
       const consumerId = `consumer-${Date.now()}`;
       consumerIdRef.current = consumerId;
 
-      const response = await fetch('/api/kafka/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ broker, topics, consumerId }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to connect');
-      }
-
+      // Create EventSource FIRST to ensure it's ready before consumer starts
       const eventSourceUrl = `/api/kafka/messages?consumerId=${consumerId}`;
       const eventSource = new EventSource(eventSourceUrl);
       eventSourceRef.current = eventSource;
 
-      let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
-      let hasReceivedTestMessage = false;
-
-      connectionTimeout = setTimeout(() => {
-        if (!hasReceivedTestMessage && eventSource.readyState === EventSource.CONNECTING) {
-          eventSource.close();
-          setIsConnecting(false);
-          setIsConnected(false);
-          toast.error('Connection Timeout', {
-            description: 'Failed to establish connection to message stream. Please try again.',
-          });
-        }
-      }, 5000);
-
-      eventSource.onopen = () => {
-        if (connectionTimeout) {
-          clearTimeout(connectionTimeout);
-          connectionTimeout = null;
-        }
-      };
+      // Set up message handler BEFORE waiting for connection
+      // This ensures messages are handled even if they arrive during connection
+      let connectionTestReceived = false;
+      let connectionResolve: (() => void) | null = null;
+      let connectionReject: ((error: Error) => void) | null = null;
 
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
 
           if (data.type === 'connection-test') {
-            hasReceivedTestMessage = true;
-            if (connectionTimeout) {
-              clearTimeout(connectionTimeout);
-              connectionTimeout = null;
+            connectionTestReceived = true;
+            if (connectionResolve) {
+              connectionResolve();
             }
             return;
           }
 
+          // Handle actual Kafka messages
           const kafkaMessage: KafkaMessage = {
             id: `${data.topic}-${data.partition}-${data.offset}`,
             flowId: data.flowId || 'unknown',
@@ -269,26 +244,50 @@ export function KafkaListener({ broker, setBroker, topics, setTopics, messages, 
       };
 
       eventSource.onerror = () => {
-        if (connectionTimeout) {
-          clearTimeout(connectionTimeout);
-          connectionTimeout = null;
-        }
-
         if (eventSource.readyState === EventSource.CLOSED) {
+          if (connectionReject) {
+            connectionReject(new Error('EventSource connection failed'));
+          }
           setIsConnecting(false);
           setIsConnected(false);
-
-          if (!hasReceivedTestMessage) {
-            toast.error('Connection Failed', {
-              description: 'Unable to establish connection to message stream. Please check your network connection and try again.',
-            });
-          } else {
-            toast.error('Connection Lost', {
-              description: 'Connection to message stream was lost. Please reconnect.',
-            });
-          }
+          toast.error('Connection Lost', {
+            description: 'Connection to message stream was lost. Please reconnect.',
+          });
         }
       };
+
+      // Wait for EventSource to be ready (connection-test message) before connecting to Kafka
+      // This ensures the server-side stream is registered and ready to receive messages
+      await new Promise<void>((resolve, reject) => {
+        connectionResolve = resolve;
+        connectionReject = reject;
+
+        const timeout = setTimeout(() => {
+          if (!connectionTestReceived) {
+            eventSource.close();
+            reject(new Error('EventSource connection timeout - did not receive connection-test message'));
+          }
+        }, 10000);
+
+        // Check if we already received the test message (unlikely but possible)
+        if (connectionTestReceived) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+
+      // Now connect to Kafka after EventSource is ready
+      const response = await fetch('/api/kafka/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broker, topics, consumerId }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        eventSource.close();
+        throw new Error(error.error || 'Failed to connect');
+      }
 
       consumerRef.current = {
         stop: async () => {

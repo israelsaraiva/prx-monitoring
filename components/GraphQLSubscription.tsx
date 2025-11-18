@@ -10,8 +10,6 @@ import { Client, createClient, SubscribePayload } from 'graphql-ws';
 import { CheckCircle2, Clock, Copy, Database, Play, Square, Trash2, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { GraphQLCodeEditor } from './GraphQLCodeEditor';
-import { JsonViewer } from './JsonViewer';
 
 interface ReceivedMessage {
   id: string;
@@ -275,7 +273,7 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
               <Label htmlFor='headers' className='text-sm font-medium'>
                 Headers (JSON)
               </Label>
-              <Textarea id='headers' placeholder='{"Authorization": "Bearer token", "X-Custom-Header": "value"}' value={headers} onChange={(e) => setHeaders(e.target.value)} disabled={isConnected} className='font-mono text-sm min-h-[80px] rounded-md border-slate-200/60 dark:border-slate-700/40 focus:border-blue-500/60 dark:focus:border-blue-400/60 transition-colors' />
+              <Textarea id='headers' placeholder='{"Authorization": "Bearer token", "X-Custom-Header": "value"}' value={headers} onChange={(e) => setHeaders(e.target.value)} disabled={isConnected} className='font-mono text-xs min-h-[80px] rounded-md border-slate-200/60 dark:border-slate-700/40 focus:border-blue-500/60 dark:focus:border-blue-400/60 transition-colors' />
               <p className='text-xs text-muted-foreground'>Optional: Add headers as JSON object. These will be sent with the connection.</p>
             </div>
           </div>
@@ -300,7 +298,7 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
                 <Label htmlFor='query' className='text-sm font-medium'>
                   Subscription Query
                 </Label>
-                <GraphQLCodeEditor value={subscriptionQuery} onChange={setSubscriptionQuery} disabled={isSubscribed} placeholder='subscription { messageAdded { id content } }' />
+                <Textarea id='query' placeholder='subscription { messageAdded { id content } }' value={subscriptionQuery} onChange={(e) => setSubscriptionQuery(e.target.value)} disabled={isSubscribed} className='font-mono text-xs min-h-[200px] rounded-md border-slate-200/60 dark:border-slate-700/40 focus:border-blue-500/60 dark:focus:border-blue-400/60 transition-colors' />
               </div>
               <div className='flex flex-col gap-3'>
                 <Button onClick={isSubscribed ? unsubscribe : subscribe} variant={isSubscribed ? 'destructive' : 'default'} size='lg' className='w-full' disabled={!subscriptionQuery.trim()}>
@@ -367,7 +365,7 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
                       {copiedId === message.id ? <CheckCircle2 className='h-3.5 w-3.5 text-green-600' /> : <Copy className='h-3.5 w-3.5' />}
                     </Button>
                   </div>
-                  <JsonViewer value={message.data} maxHeight='300px' />
+                  <div className='font-mono text-xs min-h-[200px] max-h-[300px] rounded-md border border-indigo-200/60 dark:border-indigo-800/40 bg-indigo-50/30 dark:bg-indigo-950/20 p-3 overflow-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words'>{message.data}</div>
                 </div>
               ))
             )}

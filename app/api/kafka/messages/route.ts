@@ -1,7 +1,30 @@
 import { NextRequest } from 'next/server';
 
-const messageStreams = new Map<string, ReadableStreamDefaultController>();
-const messageQueues = new Map<string, unknown[]>();
+// Declare global types for our Maps
+declare global {
+  // eslint-disable-next-line no-var
+  var kafkaMessageStreams: Map<string, ReadableStreamDefaultController> | undefined;
+  // eslint-disable-next-line no-var
+  var kafkaMessageQueues: Map<string, unknown[]> | undefined;
+}
+
+// Use globalThis to ensure the Map persists across hot reloads and module recompilations
+const getMessageStreams = () => {
+  if (!globalThis.kafkaMessageStreams) {
+    globalThis.kafkaMessageStreams = new Map<string, ReadableStreamDefaultController>();
+  }
+  return globalThis.kafkaMessageStreams;
+};
+
+const getMessageQueues = () => {
+  if (!globalThis.kafkaMessageQueues) {
+    globalThis.kafkaMessageQueues = new Map<string, unknown[]>();
+  }
+  return globalThis.kafkaMessageQueues;
+};
+
+const messageStreams = getMessageStreams();
+const messageQueues = getMessageQueues();
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
