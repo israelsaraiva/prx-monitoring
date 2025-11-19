@@ -1,3 +1,4 @@
+import { PageTransition } from '@/components/PageTransition';
 import { Toaster } from '@/components/ui/sonner';
 import type { Metadata } from 'next';
 import { ThemeProvider } from 'next-themes';
@@ -13,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang='en' suppressHydrationWarning>
       <body style={{ fontFamily: 'Jost, system-ui, -apple-system, sans-serif' }}>
         <ThemeProvider attribute='class' defaultTheme='system' enableSystem disableTransitionOnChange>
-          {children}
+          <PageTransition>{children}</PageTransition>
           <Toaster />
         </ThemeProvider>
       </body>

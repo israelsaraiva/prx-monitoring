@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, ArrowDown, CheckCircle2, ChevronRight, Clock, FileText, Hash, Server, XCircle } from 'lucide-react';
+import { AlertCircle, ArrowDown, CheckCircle2, ChevronRight, Clock, FileText, Hash, Repeat, Send, Server, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 interface KafkaMessage {
@@ -50,6 +51,15 @@ function parseMessage(value: string): ParsedMessage {
     };
   } catch {
     return { rawValue: value };
+  }
+}
+
+function formatMessageContent(value: string): string {
+  try {
+    const parsed = JSON.parse(value);
+    return JSON.stringify(parsed, null, 4);
+  } catch {
+    return value;
   }
 }
 
@@ -207,9 +217,37 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
                                     </div>
                                   )}
                                 </div>
-                                <div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-                                  <Clock className='h-3 w-3' />
-                                  {msg.timestamp.toLocaleTimeString()}
+                                <div className='flex items-center gap-2'>
+                                  <Button
+                                    onClick={() => {
+                                      if (typeof window !== 'undefined' && (window as { useKafkaMessageForSend?: (message: KafkaMessage) => void }).useKafkaMessageForSend) {
+                                        (window as { useKafkaMessageForSend: (message: KafkaMessage) => void }).useKafkaMessageForSend(msg);
+                                      }
+                                    }}
+                                    variant='outline'
+                                    size='sm'
+                                    className='h-7 text-xs'
+                                  >
+                                    <Send className='h-3 w-3 mr-1' />
+                                    Use for Send
+                                  </Button>
+                                  <Button
+                                    onClick={() => {
+                                      if (typeof window !== 'undefined' && (window as { resendKafkaMessage?: (message: KafkaMessage) => void }).resendKafkaMessage) {
+                                        (window as { resendKafkaMessage: (message: KafkaMessage) => void }).resendKafkaMessage(msg);
+                                      }
+                                    }}
+                                    variant='outline'
+                                    size='sm'
+                                    className='h-7 text-xs'
+                                  >
+                                    <Repeat className='h-3 w-3 mr-1' />
+                                    Resend
+                                  </Button>
+                                  <div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+                                    <Clock className='h-3 w-3' />
+                                    {msg.timestamp.toLocaleTimeString()}
+                                  </div>
                                 </div>
                               </div>
 
@@ -255,16 +293,31 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
                                     )}
                                   </div>
                                   <div>
-                                    <div className='flex items-center gap-2 mb-2'>
-                                      <FileText className='h-3.5 w-3.5 text-muted-foreground' />
-                                      <span className='text-xs font-medium text-muted-foreground'>Full Message Content</span>
-                                      {group.flowId !== 'unknown' && group.flowId !== 'error' && (
-                                        <Badge variant='outline' className='text-[10px] px-1.5 py-0 border-purple-300/60 text-purple-600 dark:border-purple-700/60 dark:text-purple-400'>
-                                          FlowID from {msg.flowIdSource === 'json-content' ? 'JSON' : msg.flowIdSource || 'unknown'}
-                                        </Badge>
-                                      )}
+                                    <div className='flex items-center justify-between mb-2'>
+                                      <div className='flex items-center gap-2'>
+                                        <FileText className='h-3.5 w-3.5 text-muted-foreground' />
+                                        <span className='text-xs font-medium text-muted-foreground'>Full Message Content</span>
+                                        {group.flowId !== 'unknown' && group.flowId !== 'error' && (
+                                          <Badge variant='outline' className='text-[10px] px-1.5 py-0 border-purple-300/60 text-purple-600 dark:border-purple-700/60 dark:text-purple-400'>
+                                            FlowID from {msg.flowIdSource === 'json-content' ? 'JSON' : msg.flowIdSource || 'unknown'}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <Button
+                                        onClick={() => {
+                                          if (typeof window !== 'undefined' && (window as { useKafkaMessageForSend?: (message: KafkaMessage) => void }).useKafkaMessageForSend) {
+                                            (window as { useKafkaMessageForSend: (message: KafkaMessage) => void }).useKafkaMessageForSend(msg);
+                                          }
+                                        }}
+                                        variant='outline'
+                                        size='sm'
+                                        className='h-7 text-xs'
+                                      >
+                                        <Send className='h-3 w-3 mr-1' />
+                                        Use for Send
+                                      </Button>
                                     </div>
-                                    <div className='font-mono text-xs min-h-[150px] max-h-[250px] rounded-md border border-purple-200/60 dark:border-purple-800/40 bg-purple-50/30 dark:bg-purple-950/20 p-3 overflow-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words'>{msg.value}</div>
+                                    <div className='font-mono text-xs min-h-[150px] max-h-[250px] rounded-md border border-purple-200/60 dark:border-purple-800/40 bg-purple-50/30 dark:bg-purple-950/20 p-3 overflow-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words'>{formatMessageContent(msg.value)}</div>
                                   </div>
                                 </div>
                               )}
