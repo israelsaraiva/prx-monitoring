@@ -8,7 +8,6 @@ A Next.js application for real-time monitoring of GraphQL subscriptions and Kafk
 
 - **Real-time Subscription Support**: Connect to GraphQL endpoints and subscribe to real-time data streams
 - **Custom Headers Configuration**: Add authentication headers and custom connection parameters
-- **Connection Validation**: Test your GraphQL endpoint connection before subscribing
 - **Message History**: View all received subscription messages with timestamps
 - **Formatted JSON Display**: Automatically formatted message content for better readability
 
@@ -75,11 +74,8 @@ The home page provides access to both monitoring tools:
 3. **Add Headers (Optional)**:
    - Enter JSON format headers, e.g., `{"Authorization": "Bearer token123"}`
    - Headers are sent during the WebSocket connection handshake
-4. **Validate Connection (Optional)**:
-   - Click "Validate Connection" to test the endpoint before subscribing
-   - This verifies the WebSocket connection can be established
-5. **Connect**: Click "Connect" to establish the WebSocket connection
-6. **Enter Subscription Query**:
+4. **Connect**: Click "Connect" to establish the WebSocket connection
+5. **Enter Subscription Query**:
    - Write your GraphQL subscription query
    - Example:
      ```graphql
@@ -92,7 +88,7 @@ The home page provides access to both monitoring tools:
        }
      }
      ```
-7. **Subscribe**: Click "Subscribe" to start receiving real-time messages
+6. **Subscribe**: Click "Subscribe" to start receiving real-time messages
 
 ### GraphQL Features
 

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Client, createClient, SubscribePayload } from 'graphql-ws';
-import { CheckCircle2, Clock, Copy, Database, Play, Square, TestTube, Trash2, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Copy, Database, Play, Square, Trash2, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -49,7 +49,7 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
   };
 
   const subscribe = async () => {
-    if (!isConnected || !clientRef.current) {
+    if (!clientRef.current) {
       toast.error('Not Connected', {
         description: 'Please connect to the endpoint first',
       });
@@ -127,111 +127,6 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
     }
   };
 
-  const validateConnection = async () => {
-    if (!endpoint) {
-      toast.error('Missing Information', {
-        description: 'Please provide an endpoint URL',
-      });
-      return;
-    }
-
-    if (isConnected) {
-      toast.info('Already Connected', {
-        description: 'You are already connected to the endpoint',
-      });
-      return;
-    }
-
-    // Validate headers JSON if provided
-    if (headers.trim()) {
-      try {
-        const parsedHeaders = JSON.parse(headers);
-        if (typeof parsedHeaders !== 'object' || parsedHeaders === null) {
-          toast.error('Invalid Headers', {
-            description: 'Headers must be a valid JSON object',
-          });
-          return;
-        }
-      } catch (parseError) {
-        toast.error('Invalid Headers', {
-          description: 'Headers must be valid JSON. Please check your input.',
-        });
-        return;
-      }
-    }
-
-    // Try to create a test client and validate WebSocket connection
-    try {
-      let connectionParams: Record<string, unknown> = {};
-
-      if (headers.trim()) {
-        const parsedHeaders = JSON.parse(headers);
-        if (typeof parsedHeaders === 'object' && parsedHeaders !== null) {
-          connectionParams = parsedHeaders;
-        }
-      }
-
-      const testClient = createClient({
-        url: endpoint,
-        connectionParams: connectionParams,
-      });
-
-      let validated = false;
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-      // Listen for connection opened event
-      const dispose = testClient.on('opened', () => {
-        validated = true;
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        testClient.dispose();
-        toast.success('Connection Valid', {
-          description: 'Successfully validated connection to GraphQL endpoint',
-        });
-      });
-
-      // Listen for connection errors
-      testClient.on('error', (err) => {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        testClient.dispose();
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error('Validation error:', err);
-        toast.error('Validation Failed', {
-          description: errorMessage || 'Connection validation failed',
-        });
-      });
-
-      // Listen for connection closed
-      testClient.on('closed', () => {
-        if (!validated && timeoutId) {
-          clearTimeout(timeoutId);
-          testClient.dispose();
-          toast.error('Validation Failed', {
-            description: 'Connection closed before validation',
-          });
-        }
-      });
-
-      // Timeout after 5 seconds
-      timeoutId = setTimeout(() => {
-        if (!validated) {
-          testClient.dispose();
-          toast.error('Validation Timeout', {
-            description: 'Connection validation timed out after 5 seconds',
-          });
-        }
-      }, 5000);
-    } catch (error) {
-      console.error('Validation error:', error);
-      toast.error('Validation Failed', {
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  };
-
   const connect = async () => {
     if (!endpoint) {
       toast.error('Missing Information', {
@@ -272,10 +167,6 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
       toast.success('Connected', {
         description: 'Successfully connected to GraphQL endpoint',
       });
-
-      if (subscriptionQuery.trim()) {
-        subscribe();
-      }
     } catch (error) {
       console.error('Connection error:', error);
       toast.error('Connection Failed', {
@@ -382,12 +273,6 @@ export function GraphQLSubscription({ endpoint, setEndpoint, subscriptionQuery, 
             </div>
           </div>
           <div className='flex flex-col gap-3 pt-2 flex-shrink-0'>
-            {!isConnected && (
-              <Button onClick={validateConnection} variant='outline' size='lg' className='w-full' disabled={!endpoint.trim()}>
-                <TestTube className='mr-2 h-4 w-4' />
-                Validate Connection
-              </Button>
-            )}
             <Button onClick={connect} variant={isConnected ? 'destructive' : 'default'} size='lg' className='w-full'>
               {isConnected ? (
                 <>
