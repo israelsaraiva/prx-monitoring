@@ -266,26 +266,26 @@ The application expects Kafka messages in the following format:
 
 ```json
 {
-  "id": "command:BACKEND_FAMILY_CIRCLE:backendError:backendError:d6d802c4-4942-4dbf-8631-139ea483ce72",
-  "createdAt": "2025-11-18T15:49:54.851Z",
-  "updatedAt": "2025-11-18T15:49:54.851Z",
+  "id": "command:FLOW_NAME:commandType:commandType:abc123-def4-5678-9012-345678901234",
+  "createdAt": "2025-01-15T10:30:45.123Z",
+  "updatedAt": "2025-01-15T10:30:45.123Z",
   "type": "command",
   "environment": "uat",
-  "hostname": "proxify-fsm-84d5b87f9d-bx2rl",
+  "hostname": "microservice-name-xyz789-abc123",
   "origin": {
-    "name": "proxify-fsm",
+    "name": "microservice-name",
     "version": "latest"
   },
-  "flow": "BACKEND_FAMILY_CIRCLE",
+  "flow": "FLOW_NAME",
   "resource": {
-    "commandId": "backendError:d6d802c4-4942-4dbf-8631-139ea483ce72",
+    "commandId": "commandType:abc123-def4-5678-9012-345678901234",
     "success": true,
-    "type": "backendError",
+    "type": "commandType",
     "payload": {
-      "errorMessage": "the fsm with flowId b29047e9-fa72-4375-834d-a39d6274ff31 is in final state and can not handle messages"
+      "errorMessage": "the fsm with flowId def456-ghi7-8901-2345-678901234567 is in final state and can not handle messages"
     },
     "headers": [],
-    "flowId": "b29047e9-fa72-4375-834d-a39d6274ff31"
+    "flowId": "def456-ghi7-8901-2345-678901234567"
   }
 }
 ```
