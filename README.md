@@ -22,6 +22,19 @@ A Next.js application for real-time monitoring of GraphQL subscriptions and Kafk
 - **Simplified Message Cards**: Quick view showing command name, source, status, and errors
 - **Expandable Details**: Click to view full message JSON content
 
+### Splunk JSON Viewer
+
+- **File Upload**: Upload and analyze Splunk JSON log files from your computer
+- **Flexible JSON Parsing**: Supports both single JSON objects/arrays and NDJSON (newline-delimited JSON) formats
+- **Message Flow Visualization**: Displays log entries in a visual graph format without grouping
+- **Search & Filter**: Search messages by content and filter by container name or log level
+- **Keyword Highlighting**: Automatically highlights "fail" (red), "flowId" (blue), and "commandId" (green) in messages
+- **Sortable Messages**: Toggle between newest first and oldest first sorting
+- **Structured Message Display**: Shows formatted `structured.message` with keyword highlighting
+- **Raw Message View**: View formatted `_raw` field when available
+- **Level-based Filtering**: Automatically filters out entries with level "unknown"
+- **Container & Level Badges**: Visual indicators for container names and log levels (ERROR highlighted in red)
+
 ### General Features
 
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
@@ -56,10 +69,11 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Home Page
 
-The home page provides access to both monitoring tools:
+The home page provides access to all monitoring tools:
 
 - **GraphQL Subscriptions**: Click "Open GraphQL Subscriptions" to monitor GraphQL real-time data
 - **Kafka Listener**: Click "Open Kafka Listener" to monitor Kafka message streams
+- **Splunk JSON Viewer**: Click "Open Splunk JSON Viewer" to upload and analyze Splunk JSON log files
 
 ---
 
@@ -153,6 +167,56 @@ The test server provides three subscriptions that emit data every 10 seconds:
    - Enter one of the subscription queries above
    - Click "Subscribe"
    - Messages will appear every 10 seconds
+
+---
+
+## Splunk JSON Viewer
+
+### Uploading and Analyzing JSON Files
+
+1. **Navigate to Splunk JSON Viewer**: Click "Open Splunk JSON Viewer" from the home page
+2. **Upload File**: Click "Select JSON File" and choose a Splunk JSON export file
+3. **View Messages**: Messages are automatically parsed and displayed in the visualization panel
+4. **Search**: Use the search bar to find specific content in messages
+5. **Filter**: Use the filter dropdowns to filter by container name or log level
+
+### Supported File Formats
+
+- **Single JSON Object/Array**: Standard JSON files with a single object or array
+- **NDJSON (Newline-Delimited JSON)**: Files with multiple JSON objects, one per line
+
+### Splunk JSON Viewer Features
+
+#### Message Display
+
+- **Container Name**: Shows the Kubernetes container name for each entry
+- **Log Level**: Displays log level (INFO, ERROR, WARN, etc.) with ERROR highlighted in red
+- **Structured Message**: Shows the `structured.message` field with keyword highlighting:
+  - "fail" highlighted in red
+  - "flowId" highlighted in blue
+  - "commandId" highlighted in green
+- **Timestamp**: Uses `@timestamp` from the JSON for accurate time display
+- **Sorting**: Toggle between newest first and oldest first
+
+#### Search and Filter
+
+- **Search**: Search across message content, container names, and levels
+- **Filter by Container**: Filter messages by specific container names
+- **Filter by Level**: Filter messages by log level (INFO, ERROR, WARN, etc.)
+
+#### Message Details
+
+Each message card includes:
+
+- **Message Preview**: Shows `structured.message` with keyword highlighting
+- **Details Section**: Expandable section with:
+  - Raw Message: Formatted `_raw` field (if available)
+  - Full Message Content: Complete formatted JSON content
+- **Metadata**: Container name, level, timestamp, and other extracted information
+
+#### Automatic Filtering
+
+- Entries with level "unknown" are automatically excluded from the display
 
 ---
 
@@ -326,6 +390,8 @@ The application extracts `flowId` in the following priority order:
 │   │       └── produce/     # Message production API
 │   ├── graphql/
 │   │   └── page.tsx         # GraphQL subscriptions page
+│   ├── json-viewer/
+│   │   └── page.tsx         # Splunk JSON Viewer page
 │   ├── kafka/
 │   │   └── page.tsx         # Kafka listener page
 │   ├── page.tsx             # Home page

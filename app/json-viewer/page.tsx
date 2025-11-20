@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { ArrowLeft, FileText, Search, Upload, X } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface JsonLogEntry {
   preview: boolean;
@@ -39,7 +39,388 @@ interface ParsedMessage {
   flowIdSource?: string;
   containerName?: string;
   level?: string;
+  rawMessage?: string;
   structuredMessage?: string;
+}
+
+const UNKNOWN_LEVEL = 'unknown';
+const FLOW_ID_PATTERN = /Flow ID:?\s*([a-f0-9-]{36})/i;
+const FLOW_ID_ALT_PATTERN = /flowId[=:]\s*([a-f0-9-]{36})/i;
+const TOPIC_SPLUNK_JSON = 'splunk-json';
+const FLOW_ID_SOURCE_SPLUNK = 'splunk';
+
+function parseSingleJson(text: string): JsonLogEntry[] | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    if (typeof parsed === 'object' && parsed !== null) {
+      return [parsed];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseNdjson(text: string): { entries: JsonLogEntry[]; errors: string[] } {
+  const lines = text.split('\n');
+  const entries: JsonLogEntry[] = [];
+  const errors: string[] = [];
+  let accumulatedJson = '';
+  let braceCount = 0;
+  let bracketCount = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim() && !accumulatedJson.trim()) continue;
+
+    accumulatedJson += (accumulatedJson ? '\n' : '') + line;
+
+    for (let j = 0; j < line.length; j++) {
+      const char = line[j];
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      if (char === '"' && !escapeNext) {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === '{') braceCount++;
+        if (char === '}') braceCount--;
+        if (char === '[') bracketCount++;
+        if (char === ']') bracketCount--;
+      }
+    }
+
+    if (braceCount === 0 && bracketCount === 0 && accumulatedJson.trim()) {
+      try {
+        const parsed = JSON.parse(accumulatedJson.trim());
+        if (Array.isArray(parsed)) {
+          entries.push(...parsed);
+        } else if (typeof parsed === 'object' && parsed !== null) {
+          entries.push(parsed);
+        } else {
+          errors.push(`Line ${i + 1}: Invalid JSON format`);
+        }
+      } catch (lineError) {
+        errors.push(`Line ${i + 1}: ${lineError instanceof Error ? lineError.message : 'Parse error'}`);
+      }
+      accumulatedJson = '';
+      braceCount = 0;
+      bracketCount = 0;
+      inString = false;
+      escapeNext = false;
+    }
+  }
+
+  if (accumulatedJson.trim() && braceCount === 0 && bracketCount === 0) {
+    try {
+      const parsed = JSON.parse(accumulatedJson.trim());
+      if (Array.isArray(parsed)) {
+        entries.push(...parsed);
+      } else if (typeof parsed === 'object' && parsed !== null) {
+        entries.push(parsed);
+      }
+    } catch {
+      if (accumulatedJson.trim()) {
+        errors.push('Final entry: Parse error');
+      }
+    }
+  }
+
+  return { entries, errors };
+}
+
+function parseJsonFile(text: string): { entries: JsonLogEntry[]; error: string | null } {
+  if (!text || text.trim().length === 0) {
+    return { entries: [], error: 'File is empty' };
+  }
+
+  const singleJsonResult = parseSingleJson(text);
+  if (singleJsonResult) {
+    return { entries: singleJsonResult, error: null };
+  }
+
+  const { entries, errors } = parseNdjson(text);
+  if (entries.length === 0) {
+    return { entries: [], error: 'Failed to parse any JSON entries' };
+  }
+
+  const error = errors.length > 0 ? `Parsed ${entries.length} entries with ${errors.length} error(s). First error: ${errors[0]}` : null;
+  return { entries, error };
+}
+
+function extractFlowIdFromObject(obj: Record<string, unknown>): string | null {
+  if (obj.flowId) {
+    return String(obj.flowId);
+  }
+
+  if (obj.resource && typeof obj.resource === 'object') {
+    const resource = obj.resource as Record<string, unknown>;
+    if (resource.flowId) {
+      return String(resource.flowId);
+    }
+  }
+
+  if (obj.message && typeof obj.message === 'string') {
+    const flowIdMatch = obj.message.match(FLOW_ID_PATTERN) || obj.message.match(FLOW_ID_ALT_PATTERN);
+    if (flowIdMatch) {
+      return flowIdMatch[1];
+    }
+
+    try {
+      const messageParsed = JSON.parse(obj.message);
+      if (messageParsed.resource?.flowId) {
+        return String(messageParsed.resource.flowId);
+      }
+      if (messageParsed.flowId) {
+        return String(messageParsed.flowId);
+      }
+    } catch {
+      // Not a JSON string, ignore
+    }
+  }
+
+  return null;
+}
+
+function extractFlowId(structured: Record<string, unknown>, rawValue: string): string {
+  if (structured.flowId) {
+    return String(structured.flowId);
+  }
+
+  const extracted = extractFlowIdFromObject(structured);
+  if (extracted) {
+    return extracted;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    const extractedFromRaw = extractFlowIdFromObject(parsed);
+    if (extractedFromRaw) {
+      return extractedFromRaw;
+    }
+  } catch {
+    // Not valid JSON, try extracting from message text
+    if (structured.message && typeof structured.message === 'string') {
+      const flowIdMatch = structured.message.match(FLOW_ID_PATTERN) || structured.message.match(FLOW_ID_ALT_PATTERN);
+      if (flowIdMatch) {
+        return flowIdMatch[1];
+      }
+    }
+  }
+
+  return UNKNOWN_LEVEL;
+}
+
+function extractCommandInfo(resource: Record<string, unknown>): { commandName?: string; success?: boolean; errorMessage?: string } {
+  const result: { commandName?: string; success?: boolean; errorMessage?: string } = {};
+
+  if (resource.commandId) {
+    const commandId = String(resource.commandId);
+    result.commandName = commandId.includes(':') ? commandId.split(':')[0] : commandId;
+  } else if (resource.type) {
+    result.commandName = String(resource.type);
+  }
+
+  if (resource.success !== undefined) {
+    result.success = Boolean(resource.success);
+  }
+
+  if (resource.payload) {
+    const payload = resource.payload as Record<string, unknown>;
+    result.errorMessage = payload.errorMessage ? String(payload.errorMessage) : payload.error ? String(payload.error) : undefined;
+  }
+
+  return result;
+}
+
+function extractCommandAndError(rawValue: string, structured: Record<string, unknown>): { commandName?: string; success?: boolean; errorMessage?: string } {
+  if (typeof rawValue === 'string') {
+    try {
+      const parsed = JSON.parse(rawValue);
+      return extractCommandInfo(parsed.resource || {});
+    } catch {
+      // Not valid JSON, try parsing structured.message if it's a JSON string
+      if (structured.message && typeof structured.message === 'string') {
+        try {
+          const messageParsed = JSON.parse(structured.message);
+          return extractCommandInfo(messageParsed.resource || {});
+        } catch {
+          // Not a JSON string, ignore
+        }
+      }
+    }
+  }
+
+  return {};
+}
+
+function extractLevel(result: Record<string, unknown>, structured: Record<string, unknown>): string | undefined {
+  if (result['structured.level']) {
+    return String(result['structured.level']).trim();
+  }
+  if (structured.level) {
+    return String(structured.level).trim();
+  }
+  if (result['level']) {
+    return String(result['level']).trim();
+  }
+  if (structured['level']) {
+    return String(structured['level']).trim();
+  }
+  return undefined;
+}
+
+function isUnknownLevel(level: string | undefined): boolean {
+  return level ? level.toLowerCase() === UNKNOWN_LEVEL : false;
+}
+
+function extractMessage(result: Record<string, unknown>, structured: Record<string, unknown>): string | undefined {
+  if (result['structured.message']) {
+    return String(result['structured.message']);
+  }
+  if (structured.message) {
+    return String(structured.message);
+  }
+  if (result['message']) {
+    return String(result['message']);
+  }
+  if (result.message) {
+    return String(result.message);
+  }
+  return undefined;
+}
+
+function formatJsonValue(rawValue: string): string {
+  try {
+    const parsed = JSON.parse(rawValue);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return rawValue;
+  }
+}
+
+function convertEntryToMessage(entry: JsonLogEntry, index: number): ParsedMessage | null {
+  const result = entry.result || {};
+  const structured = (result['structured'] || result.structured || {}) as Record<string, unknown>;
+  const rawValue = result['_raw'] || result._raw || JSON.stringify(result);
+  const rawMessage = (result['_raw'] || result._raw) && typeof (result['_raw'] || result._raw) === 'string' ? String(result['_raw'] || result._raw) : undefined;
+
+  const flowId = extractFlowId(structured, typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue));
+  const { commandName, success, errorMessage } = extractCommandAndError(typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue), structured);
+
+  const timestamp = result['@timestamp'] ? new Date(result['@timestamp']) : new Date();
+  const containerName = result['kubernetes.container_name'] ? String(result['kubernetes.container_name']) : undefined;
+  const level = extractLevel(result, structured);
+
+  if (isUnknownLevel(level)) {
+    return null;
+  }
+
+  const structuredMessage = extractMessage(result, structured);
+  const value = typeof rawValue === 'string' ? formatJsonValue(rawValue) : JSON.stringify(rawValue);
+
+  return {
+    id: `json-${index}`,
+    flowId: `${flowId}-${index}`,
+    timestamp,
+    topic: TOPIC_SPLUNK_JSON,
+    partition: 0,
+    offset: String(index),
+    key: commandName || null,
+    value,
+    flowIdSource: FLOW_ID_SOURCE_SPLUNK,
+    containerName,
+    level,
+    rawMessage,
+    structuredMessage,
+  };
+}
+
+function convertToKafkaMessages(entries: JsonLogEntry[]): ParsedMessage[] {
+  return entries.map(convertEntryToMessage).filter((msg): msg is ParsedMessage => msg !== null && !isUnknownLevel(msg.level));
+}
+
+function filterByUnknownLevel(messages: ParsedMessage[]): ParsedMessage[] {
+  return messages.filter((msg) => !isUnknownLevel(msg.level));
+}
+
+function filterByType(messages: ParsedMessage[], filterType: 'container' | 'level' | 'none', filterValue: string): ParsedMessage[] {
+  if (filterType === 'none' || !filterValue) {
+    return messages;
+  }
+
+  if (filterType === 'container') {
+    return messages.filter((msg) => msg.containerName === filterValue);
+  }
+
+  if (filterType === 'level') {
+    return messages.filter((msg) => msg.level?.toLowerCase() === filterValue.toLowerCase());
+  }
+
+  return messages;
+}
+
+function filterBySearchQuery(messages: ParsedMessage[], searchQuery: string): ParsedMessage[] {
+  if (!searchQuery.trim()) {
+    return messages;
+  }
+
+  const query = searchQuery.toLowerCase();
+  return messages.filter((msg) => {
+    const value = msg.value.toLowerCase();
+    const containerName = msg.containerName?.toLowerCase() || '';
+    const level = msg.level?.toLowerCase() || '';
+    return value.includes(query) || containerName.includes(query) || level.includes(query);
+  });
+}
+
+const STORAGE_KEY_JSON_DATA = 'splunk-json-viewer-data';
+const STORAGE_KEY_FILE_NAME = 'splunk-json-viewer-file-name';
+
+function saveToLocalStorage(data: JsonLogEntry[], fileName: string): void {
+  try {
+    const dataString = JSON.stringify(data);
+    localStorage.setItem(STORAGE_KEY_JSON_DATA, dataString);
+    localStorage.setItem(STORAGE_KEY_FILE_NAME, fileName);
+  } catch (error) {
+    console.warn('Failed to save to localStorage:', error);
+  }
+}
+
+function loadFromLocalStorage(): { data: JsonLogEntry[]; fileName: string } | null {
+  try {
+    const dataString = localStorage.getItem(STORAGE_KEY_JSON_DATA);
+    const fileName = localStorage.getItem(STORAGE_KEY_FILE_NAME);
+
+    if (dataString && fileName) {
+      const data = JSON.parse(dataString) as JsonLogEntry[];
+      return { data, fileName };
+    }
+  } catch (error) {
+    console.warn('Failed to load from localStorage:', error);
+  }
+  return null;
+}
+
+function clearLocalStorage(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY_JSON_DATA);
+    localStorage.removeItem(STORAGE_KEY_FILE_NAME);
+  } catch (error) {
+    console.warn('Failed to clear localStorage:', error);
+  }
 }
 
 export default function JsonViewerPage() {
@@ -56,125 +437,24 @@ export default function JsonViewerPage() {
 
     setError('');
     setFileName(file.name);
+    setSearchQuery('');
+    setFilterType('none');
+    setFilterValue('');
 
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
+        const { entries, error: parseError } = parseJsonFile(text);
 
-        if (!text || text.trim().length === 0) {
-          setError('File is empty');
-          setJsonData([]);
-          return;
-        }
-
-        let parsedEntries: JsonLogEntry[] = [];
-        let parseError: string | null = null;
-
-        // First, try to parse as a single JSON object/array
-        try {
-          const parsed = JSON.parse(text);
-
-          if (Array.isArray(parsed)) {
-            parsedEntries = parsed;
-          } else if (typeof parsed === 'object' && parsed !== null) {
-            parsedEntries = [parsed];
-          } else {
-            parseError = 'Invalid JSON format. Expected an array or object.';
-          }
-        } catch (singleJsonError) {
-          // If single JSON parsing fails, try NDJSON (newline-delimited JSON)
-          const lines = text.split('\n');
-          const lineParseErrors: string[] = [];
-          let accumulatedJson = '';
-          let braceCount = 0;
-          let bracketCount = 0;
-          let inString = false;
-          let escapeNext = false;
-
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (!line.trim()) continue;
-
-            accumulatedJson += (accumulatedJson ? '\n' : '') + line;
-
-            for (let j = 0; j < line.length; j++) {
-              const char = line[j];
-              if (escapeNext) {
-                escapeNext = false;
-                continue;
-              }
-              if (char === '\\') {
-                escapeNext = true;
-                continue;
-              }
-              if (char === '"' && !escapeNext) {
-                inString = !inString;
-                continue;
-              }
-              if (!inString) {
-                if (char === '{') braceCount++;
-                if (char === '}') braceCount--;
-                if (char === '[') bracketCount++;
-                if (char === ']') bracketCount--;
-              }
-            }
-
-            if (braceCount === 0 && bracketCount === 0 && accumulatedJson.trim()) {
-              try {
-                const parsed = JSON.parse(accumulatedJson.trim());
-
-                if (Array.isArray(parsed)) {
-                  parsedEntries.push(...parsed);
-                } else if (typeof parsed === 'object' && parsed !== null) {
-                  parsedEntries.push(parsed);
-                } else {
-                  lineParseErrors.push(`Line ${i + 1}: Invalid JSON format`);
-                }
-              } catch (lineError) {
-                lineParseErrors.push(`Line ${i + 1}: ${lineError instanceof Error ? lineError.message : 'Parse error'}`);
-              }
-              accumulatedJson = '';
-              braceCount = 0;
-              bracketCount = 0;
-            }
-          }
-
-          if (accumulatedJson.trim() && braceCount === 0 && bracketCount === 0) {
-            try {
-              const parsed = JSON.parse(accumulatedJson.trim());
-              if (Array.isArray(parsed)) {
-                parsedEntries.push(...parsed);
-              } else if (typeof parsed === 'object' && parsed !== null) {
-                parsedEntries.push(parsed);
-              }
-            } catch {
-              if (accumulatedJson.trim()) {
-                lineParseErrors.push(`Final entry: Parse error`);
-              }
-            }
-          }
-
-          if (parsedEntries.length === 0) {
-            const singleError = singleJsonError instanceof Error ? singleJsonError.message : 'Unknown error';
-            setError(`Failed to parse any JSON entries. The file might be a single multi-line JSON object. Original error: ${singleError}`);
-            setJsonData([]);
-            return;
-          } else if (lineParseErrors.length > 0) {
-            parseError = `Parsed ${parsedEntries.length} entries with ${lineParseErrors.length} error(s). First error: ${lineParseErrors[0]}`;
-          }
-        }
-
-        if (parsedEntries.length > 0) {
-          setJsonData(parsedEntries);
-          if (parseError) {
-            setError(parseError);
-          } else {
-            setError('');
-          }
+        if (entries.length > 0) {
+          setJsonData(entries);
+          setError(parseError || '');
+          saveToLocalStorage(entries, file.name);
         } else {
           setError(parseError || 'No valid JSON entries found');
           setJsonData([]);
+          clearLocalStorage();
         }
       } catch (err) {
         setError(`Failed to read file: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -194,187 +474,26 @@ export default function JsonViewerPage() {
     setJsonData([]);
     setFileName('');
     setError('');
+    setSearchQuery('');
+    setFilterType('none');
+    setFilterValue('');
+    clearLocalStorage();
     const fileInput = document.getElementById('json-file-input') as HTMLInputElement;
     if (fileInput) {
       fileInput.value = '';
     }
   };
 
-  const convertToKafkaMessages = (entries: JsonLogEntry[]): ParsedMessage[] => {
-    return entries
-      .map((entry, index) => {
-        const result = entry.result || {};
-        const structured = (result['structured'] || result.structured || {}) as Record<string, unknown>;
-        const rawValue = result['_raw'] || result._raw || JSON.stringify(result);
-        // Extract _raw - only use the _raw key, must be a string
-        const rawMessage = (result['_raw'] || result._raw) && typeof (result['_raw'] || result._raw) === 'string' ? String(result['_raw'] || result._raw) : undefined;
-
-        let flowId = 'unknown';
-        let commandName: string | undefined;
-        let success: boolean | undefined;
-        let errorMessage: string | undefined;
-
-        const extractFlowId = (obj: Record<string, unknown>): string | null => {
-          if (obj.flowId) {
-            return String(obj.flowId);
-          }
-          if (obj.resource && typeof obj.resource === 'object') {
-            const resource = obj.resource as Record<string, unknown>;
-            if (resource.flowId) {
-              return String(resource.flowId);
-            }
-          }
-          if (obj.message && typeof obj.message === 'string') {
-            const flowIdMatch = obj.message.match(/Flow ID:?\s*([a-f0-9-]{36})/i) || obj.message.match(/flowId[=:]\s*([a-f0-9-]{36})/i);
-            if (flowIdMatch) {
-              return flowIdMatch[1];
-            }
-            try {
-              const messageParsed = JSON.parse(obj.message);
-              if (messageParsed.resource && messageParsed.resource.flowId) {
-                return String(messageParsed.resource.flowId);
-              }
-              if (messageParsed.flowId) {
-                return String(messageParsed.flowId);
-              }
-            } catch {
-              // Not a JSON string, ignore
-            }
-          }
-          return null;
-        };
-
-        if (structured.flowId) {
-          flowId = String(structured.flowId);
-        } else {
-          const extracted = extractFlowId(structured);
-          if (extracted) {
-            flowId = extracted;
-          } else if (typeof rawValue === 'string') {
-            try {
-              const parsed = JSON.parse(rawValue);
-              const extractedFromRaw = extractFlowId(parsed);
-              if (extractedFromRaw) {
-                flowId = extractedFromRaw;
-              }
-            } catch {
-              // Not valid JSON, try extracting from message text
-              if (structured.message && typeof structured.message === 'string') {
-                const flowIdMatch = structured.message.match(/Flow ID:?\s*([a-f0-9-]{36})/i) || structured.message.match(/flowId[=:]\s*([a-f0-9-]{36})/i);
-                if (flowIdMatch) {
-                  flowId = flowIdMatch[1];
-                }
-              }
-            }
-          }
-        }
-
-        if (typeof rawValue === 'string') {
-          try {
-            const parsed = JSON.parse(rawValue);
-            const resource = parsed.resource || {};
-
-            if (resource.commandId) {
-              const commandId = String(resource.commandId);
-              commandName = commandId.includes(':') ? commandId.split(':')[0] : commandId;
-            } else if (resource.type) {
-              commandName = String(resource.type);
-            }
-
-            if (resource.success !== undefined) {
-              success = Boolean(resource.success);
-            }
-
-            if (resource.payload) {
-              const payload = resource.payload as Record<string, unknown>;
-              if (payload.errorMessage) {
-                errorMessage = String(payload.errorMessage);
-              } else if (payload.error) {
-                errorMessage = String(payload.error);
-              }
-            }
-          } catch {
-            // Not valid JSON, try parsing structured.message if it's a JSON string
-            if (structured.message && typeof structured.message === 'string') {
-              try {
-                const messageParsed = JSON.parse(structured.message);
-                const resource = messageParsed.resource || {};
-
-                if (resource.commandId) {
-                  const commandId = String(resource.commandId);
-                  commandName = commandId.includes(':') ? commandId.split(':')[0] : commandId;
-                } else if (resource.type) {
-                  commandName = String(resource.type);
-                }
-
-                if (resource.success !== undefined) {
-                  success = Boolean(resource.success);
-                }
-
-                if (resource.payload) {
-                  const payload = resource.payload as Record<string, unknown>;
-                  if (payload.errorMessage) {
-                    errorMessage = String(payload.errorMessage);
-                  } else if (payload.error) {
-                    errorMessage = String(payload.error);
-                  }
-                }
-              } catch {
-                // Not a JSON string, ignore
-              }
-            }
-          }
-        }
-
-        const timestamp = result['@timestamp'] ? new Date(result['@timestamp']) : new Date();
-
-        // Extract kubernetes.container_name
-        const containerName = result['kubernetes.container_name'] ? String(result['kubernetes.container_name']) : undefined;
-
-        // Extract structured.level
-        const level = result['structured.level'] ? String(result['structured.level']) : structured.level ? String(structured.level) : undefined;
-
-        // Extract structured.message
-        const structuredMessage = result['structured.message'] ? String(result['structured.message']) : structured.message ? String(structured.message) : undefined;
-
-        let value = rawValue;
-        if (typeof rawValue === 'string') {
-          try {
-            const parsed = JSON.parse(rawValue);
-            value = JSON.stringify(parsed, null, 2);
-          } catch {
-            value = rawValue;
-          }
-        }
-
-        return {
-          id: `json-${index}`,
-          flowId: `${flowId}-${index}`, // Make each message unique to prevent grouping
-          timestamp,
-          topic: 'splunk-json',
-          partition: 0,
-          offset: String(index),
-          key: commandName || null,
-          value: typeof value === 'string' ? value : JSON.stringify(value),
-          flowIdSource: 'splunk',
-          containerName,
-          level,
-          rawMessage: typeof rawMessage === 'string' ? rawMessage : undefined,
-          structuredMessage,
-        };
-      })
-      .filter((msg) => {
-        // Skip items with level "unknown"
-        if (msg.level && msg.level.toLowerCase() === 'unknown') {
-          return false;
-        }
-        return true;
-      });
-  };
+  useEffect(() => {
+    const stored = loadFromLocalStorage();
+    if (stored) {
+      setJsonData(stored.data);
+      setFileName(stored.fileName);
+    }
+  }, []);
 
   const kafkaMessages = useMemo(() => convertToKafkaMessages(jsonData), [jsonData]);
 
-  // Get unique container names and levels for filter options
   const uniqueContainers = useMemo(() => {
     const containers = new Set<string>();
     kafkaMessages.forEach((msg) => {
@@ -395,38 +514,10 @@ export default function JsonViewerPage() {
     return Array.from(levels).sort();
   }, [kafkaMessages]);
 
-  // Filter messages based on search query and filter type
   const filteredMessages = useMemo(() => {
-    let filtered = kafkaMessages;
-
-    // Skip items with level "unknown" (double-check filter)
-    filtered = filtered.filter((msg) => {
-      if (msg.level && msg.level.toLowerCase() === 'unknown') {
-        return false;
-      }
-      return true;
-    });
-
-    // Apply filter by container name or level
-    if (filterType !== 'none' && filterValue) {
-      if (filterType === 'container') {
-        filtered = filtered.filter((msg) => msg.containerName === filterValue);
-      } else if (filterType === 'level') {
-        filtered = filtered.filter((msg) => msg.level?.toLowerCase() === filterValue.toLowerCase());
-      }
-    }
-
-    // Apply search query (search in message content/value)
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter((msg) => {
-        const value = msg.value.toLowerCase();
-        const containerName = msg.containerName?.toLowerCase() || '';
-        const level = msg.level?.toLowerCase() || '';
-        return value.includes(query) || containerName.includes(query) || level.includes(query);
-      });
-    }
-
+    let filtered = filterByUnknownLevel(kafkaMessages);
+    filtered = filterByType(filtered, filterType, filterValue);
+    filtered = filterBySearchQuery(filtered, searchQuery);
     return filtered;
   }, [kafkaMessages, searchQuery, filterType, filterValue]);
 
@@ -458,7 +549,6 @@ export default function JsonViewerPage() {
 
         <div className='flex-1 min-h-0'>
           <div className='flex flex-col lg:flex-row gap-4 lg:gap-6 h-full items-stretch'>
-            {/* File Upload - Left Side */}
             <div className='w-full lg:w-[300px] lg:flex-shrink-0 self-start'>
               <Card className='border-2 border-purple-200/50 shadow-lg bg-gradient-to-br from-white to-purple-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-purple-800/30 h-full flex flex-col'>
                 <CardHeader className='flex-shrink-0'>
@@ -509,7 +599,6 @@ export default function JsonViewerPage() {
               </Card>
             </div>
 
-            {/* Message Flow Visualization - Right Side */}
             <div className='w-full lg:flex-1 overflow-hidden h-full'>
               <Card className='border-2 border-purple-200/50 shadow-lg bg-gradient-to-br from-white to-purple-50/20 dark:from-slate-900 dark:to-slate-800 dark:border-purple-800/30 h-full flex flex-col min-h-0'>
                 <CardHeader className='pb-4 flex-shrink-0'>
