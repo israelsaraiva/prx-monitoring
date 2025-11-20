@@ -2,6 +2,7 @@
 
 import { KafkaListener } from '@/components/KafkaListener';
 import { MessageFlowGraph } from '@/components/MessageFlowGraph';
+import { SendMessageForm } from '@/components/SendMessageForm';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -160,51 +161,62 @@ export default function KafkaPage() {
             <div className='w-full lg:w-[500px] lg:flex-shrink-0 self-start'>
               <KafkaListener broker={kafkaBroker} setBroker={setKafkaBroker} topics={kafkaTopics} setTopics={setKafkaTopics} messages={kafkaMessages} setMessages={setKafkaMessages} isConnected={isKafkaConnected} setIsConnected={setIsKafkaConnected} onDisconnect={handleKafkaDisconnect} onClear={handleKafkaClear} onUseMessageForSend={() => {}} />
             </div>
-            {/* Message Flow Visualization - Right Side */}
+            {/* Message Flow Visualization and Send Message - Right Side */}
             <div className='w-full lg:flex-1 overflow-hidden h-full'>
-              <div className='h-full flex flex-col'>
-                <Card className='border-2 border-purple-200/50 shadow-lg bg-gradient-to-br from-white to-purple-50/20 dark:from-slate-900 dark:to-slate-800 dark:border-purple-800/30 flex-1 flex flex-col min-h-0'>
-                  <CardHeader className='pb-4 flex-shrink-0'>
-                    <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3'>
-                      <div>
-                        <CardTitle className='text-xl sm:text-2xl'>Message Flow Visualization</CardTitle>
-                        <CardDescription className='mt-1 text-xs sm:text-sm'>Messages grouped by flowId and displayed in a graph format</CardDescription>
-                      </div>
-                      {kafkaMessages.length > 0 && (
-                        <div className='flex flex-wrap items-center gap-2 sm:gap-3'>
-                          <Badge variant='secondary' className='text-xs sm:text-sm bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'>
-                            {new Set(filteredKafkaMessages.map((m) => m.flowId)).size} flow{new Set(filteredKafkaMessages.map((m) => m.flowId)).size !== 1 ? 's' : ''}
-                          </Badge>
-                          <Badge variant='outline' className='text-xs sm:text-sm'>
-                            {filteredKafkaMessages.length} message{filteredKafkaMessages.length !== 1 ? 's' : ''}
-                            {kafkaSearchQuery && ` (of ${kafkaMessages.length})`}
-                          </Badge>
-                          <Badge variant='outline' className='text-xs sm:text-sm'>
-                            {filteredKafkaMessages.filter((m) => m.flowId !== 'unknown' && m.flowId !== 'error').length} linked
-                          </Badge>
+              <div className='h-full flex flex-col lg:flex-row gap-4'>
+                {/* Send Message Card */}
+                <div className='w-full lg:w-[400px] lg:shrink-0'>
+                  <Card className='h-full border-2 border-teal-200/50 shadow-lg bg-gradient-to-br from-white to-teal-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-teal-800/30 flex flex-col'>
+                    <CardContent className='flex-1 overflow-hidden min-h-0 p-4 lg:p-6'>
+                      <SendMessageForm broker={kafkaBroker} defaultTopic={kafkaTopics.split(',')[0]?.trim()} />
+                    </CardContent>
+                  </Card>
+                </div>
+                {/* Message Flow Visualization Card */}
+                <div className='flex-1 min-h-0 overflow-hidden'>
+                  <Card className='border-2 border-purple-200/50 shadow-lg bg-gradient-to-br from-white to-purple-50/20 dark:from-slate-900 dark:to-slate-800 dark:border-purple-800/30 h-full flex flex-col min-h-0'>
+                    <CardHeader className='pb-4 flex-shrink-0'>
+                      <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3'>
+                        <div>
+                          <CardTitle className='text-xl sm:text-2xl'>Message Flow Visualization</CardTitle>
+                          <CardDescription className='mt-1 text-xs sm:text-sm'>Messages grouped by flowId and displayed in a graph format</CardDescription>
                         </div>
-                      )}
-                    </div>
-                    {kafkaMessages.length > 0 && (
-                      <div className='mt-4'>
-                        <div className='relative'>
-                          <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-                          <Input type='text' placeholder='Search messages by content, topic, flowId, or key...' value={kafkaSearchQuery} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setKafkaSearchQuery(e.target.value)} className='pl-10 h-10' />
-                        </div>
-                        {kafkaSearchQuery && (
-                          <p className='text-xs text-muted-foreground mt-2'>
-                            Showing {filteredKafkaMessages.length} of {kafkaMessages.length} messages
-                          </p>
+                        {kafkaMessages.length > 0 && (
+                          <div className='flex flex-wrap items-center gap-2 sm:gap-3'>
+                            <Badge variant='secondary' className='text-xs sm:text-sm bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'>
+                              {new Set(filteredKafkaMessages.map((m) => m.flowId)).size} flow{new Set(filteredKafkaMessages.map((m) => m.flowId)).size !== 1 ? 's' : ''}
+                            </Badge>
+                            <Badge variant='outline' className='text-xs sm:text-sm'>
+                              {filteredKafkaMessages.length} message{filteredKafkaMessages.length !== 1 ? 's' : ''}
+                              {kafkaSearchQuery && ` (of ${kafkaMessages.length})`}
+                            </Badge>
+                            <Badge variant='outline' className='text-xs sm:text-sm'>
+                              {filteredKafkaMessages.filter((m) => m.flowId !== 'unknown' && m.flowId !== 'error').length} linked
+                            </Badge>
+                          </div>
                         )}
                       </div>
-                    )}
-                  </CardHeader>
-                  <CardContent className='flex-1 overflow-hidden min-h-0 flex flex-col'>
-                    <div className='flex-1 min-h-0'>
-                      <MessageFlowGraph messages={filteredKafkaMessages} />
-                    </div>
-                  </CardContent>
-                </Card>
+                      {kafkaMessages.length > 0 && (
+                        <div className='mt-4'>
+                          <div className='relative'>
+                            <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground' />
+                            <Input type='text' placeholder='Search messages by content, topic, flowId, or key...' value={kafkaSearchQuery} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setKafkaSearchQuery(e.target.value)} className='pl-10 h-10' />
+                          </div>
+                          {kafkaSearchQuery && (
+                            <p className='text-xs text-muted-foreground mt-2'>
+                              Showing {filteredKafkaMessages.length} of {kafkaMessages.length} messages
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </CardHeader>
+                    <CardContent className='flex-1 overflow-hidden min-h-0 flex flex-col'>
+                      <div className='flex-1 min-h-0'>
+                        <MessageFlowGraph messages={filteredKafkaMessages} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
             </div>
           </div>

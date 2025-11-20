@@ -220,8 +220,11 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
                                 <div className='flex items-center gap-2'>
                                   <Button
                                     onClick={() => {
-                                      if (typeof window !== 'undefined' && (window as { useKafkaMessageForSend?: (message: KafkaMessage) => void }).useKafkaMessageForSend) {
-                                        (window as { useKafkaMessageForSend: (message: KafkaMessage) => void }).useKafkaMessageForSend(msg);
+                                      if (typeof window !== 'undefined') {
+                                        const win = window as unknown as { useKafkaMessageForSend?: (topic: string, key: string | null, value: string) => void };
+                                        if (win.useKafkaMessageForSend) {
+                                          win.useKafkaMessageForSend(msg.topic, msg.key, msg.value);
+                                        }
                                       }
                                     }}
                                     variant='outline'
@@ -233,8 +236,11 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
                                   </Button>
                                   <Button
                                     onClick={() => {
-                                      if (typeof window !== 'undefined' && (window as { resendKafkaMessage?: (message: KafkaMessage) => void }).resendKafkaMessage) {
-                                        (window as { resendKafkaMessage: (message: KafkaMessage) => void }).resendKafkaMessage(msg);
+                                      if (typeof window !== 'undefined') {
+                                        const win = window as unknown as { resendKafkaMessage?: (message: KafkaMessage) => void };
+                                        if (win.resendKafkaMessage) {
+                                          win.resendKafkaMessage(msg);
+                                        }
                                       }
                                     }}
                                     variant='outline'
@@ -305,8 +311,11 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
                                       </div>
                                       <Button
                                         onClick={() => {
-                                          if (typeof window !== 'undefined' && (window as { useKafkaMessageForSend?: (message: KafkaMessage) => void }).useKafkaMessageForSend) {
-                                            (window as { useKafkaMessageForSend: (message: KafkaMessage) => void }).useKafkaMessageForSend(msg);
+                                          if (typeof window !== 'undefined') {
+                                            const win = window as unknown as { useKafkaMessageForSend?: (topic: string, key: string | null, value: string) => void };
+                                            if (win.useKafkaMessageForSend) {
+                                              win.useKafkaMessageForSend(msg.topic, msg.key, msg.value);
+                                            }
                                           }
                                         }}
                                         variant='outline'

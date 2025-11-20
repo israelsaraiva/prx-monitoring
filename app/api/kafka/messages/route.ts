@@ -1,30 +1,8 @@
 import { NextRequest } from 'next/server';
+import { getMessageQueuesMap, getMessageStreamsMap } from '../utils';
 
-// Declare global types for our Maps
-declare global {
-  // eslint-disable-next-line no-var
-  var kafkaMessageStreams: Map<string, ReadableStreamDefaultController> | undefined;
-  // eslint-disable-next-line no-var
-  var kafkaMessageQueues: Map<string, unknown[]> | undefined;
-}
-
-// Use globalThis to ensure the Map persists across hot reloads and module recompilations
-const getMessageStreams = () => {
-  if (!globalThis.kafkaMessageStreams) {
-    globalThis.kafkaMessageStreams = new Map<string, ReadableStreamDefaultController>();
-  }
-  return globalThis.kafkaMessageStreams;
-};
-
-const getMessageQueues = () => {
-  if (!globalThis.kafkaMessageQueues) {
-    globalThis.kafkaMessageQueues = new Map<string, unknown[]>();
-  }
-  return globalThis.kafkaMessageQueues;
-};
-
-const messageStreams = getMessageStreams();
-const messageQueues = getMessageQueues();
+const messageStreams = getMessageStreamsMap();
+const messageQueues = getMessageQueuesMap();
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -76,30 +54,4 @@ export async function GET(request: NextRequest) {
       'Access-Control-Allow-Headers': 'Cache-Control',
     },
   });
-}
-
-export function sendKafkaMessage(consumerId: string, message: unknown) {
-  const controller = messageStreams.get(consumerId);
-  if (controller) {
-    try {
-      const data = `data: ${JSON.stringify(message)}\n\n`;
-      controller.enqueue(new TextEncoder().encode(data));
-    } catch (error) {
-      console.error('Error sending message to stream:', error);
-      messageStreams.delete(consumerId);
-    }
-  } else {
-    // Queue message until EventSource stream is ready
-    if (!messageQueues.has(consumerId)) {
-      messageQueues.set(consumerId, []);
-    }
-    const queue = messageQueues.get(consumerId);
-    if (queue) {
-      queue.push(message);
-      // Limit queue size to prevent memory issues
-      if (queue.length > 100) {
-        queue.shift();
-      }
-    }
-  }
 }

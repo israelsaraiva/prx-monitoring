@@ -1,6 +1,6 @@
 import { EachMessagePayload, Kafka } from 'kafkajs';
 import { NextRequest } from 'next/server';
-import { sendKafkaMessage } from '../messages/route';
+import { sendKafkaMessage } from '../utils';
 
 interface ConsumerData {
   consumer: ReturnType<Kafka['consumer']>;

@@ -55,9 +55,6 @@ export function GraphQLCodeEditor({ value, onChange, disabled = false, placehold
             enabled: true,
           },
           colorDecorators: true,
-          semanticHighlighting: {
-            enabled: true,
-          },
         }}
       />
     </div>

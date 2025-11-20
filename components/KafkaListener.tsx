@@ -3,11 +3,9 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Edit, Loader2, Play, Plus, Save, Send, Settings, Square, Trash2, X, XCircle, Zap } from 'lucide-react';
+import { Edit, Loader2, Play, Plus, Save, Settings, Square, Trash2, X, XCircle, Zap } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -52,14 +50,6 @@ export function KafkaListener({ broker, setBroker, topics, setTopics, messages, 
 
   // Connection loading state
   const [isConnecting, setIsConnecting] = useState(false);
-
-  // Send message state
-  const [showSendDialog, setShowSendDialog] = useState(false);
-  const [sendTopic, setSendTopic] = useState('');
-  const [sendKey, setSendKey] = useState('');
-  const [sendValue, setSendValue] = useState('');
-  const [sendHeaders, setSendHeaders] = useState('');
-  const [isSending, setIsSending] = useState(false);
 
   // Broker configuration management
   const [savedConfigs, setSavedConfigs] = useState<BrokerConfig[]>([]);
@@ -369,15 +359,6 @@ export function KafkaListener({ broker, setBroker, topics, setTopics, messages, 
     });
   };
 
-  const formatMessageValue = (value: string) => {
-    try {
-      const parsed = JSON.parse(value);
-      return JSON.stringify(parsed, null, 4);
-    } catch {
-      return value;
-    }
-  };
-
   const resendMessage = useCallback(
     async (message: KafkaMessage) => {
       if (!broker) {
@@ -431,75 +412,16 @@ export function KafkaListener({ broker, setBroker, topics, setTopics, messages, 
     };
   }, []);
 
-  // Expose functions to use message for sending via window (for MessageFlowGraph)
+  // Expose function to resend message via window (for MessageFlowGraph)
   useEffect(() => {
-    (window as { useKafkaMessageForSend?: (message: KafkaMessage) => void }).useKafkaMessageForSend = (message: KafkaMessage) => {
-      setSendTopic(message.topic);
-      setSendKey(message.key || '');
-      setSendValue(formatMessageValue(message.value));
-      setShowSendDialog(true);
-      toast.info('Message Parameters Loaded', {
-        description: 'Message parameters have been loaded into the send form',
-      });
-    };
-
     (window as { resendKafkaMessage?: (message: KafkaMessage) => void }).resendKafkaMessage = (message: KafkaMessage) => {
       resendMessage(message);
     };
 
     return () => {
-      delete (window as { useKafkaMessageForSend?: (message: KafkaMessage) => void }).useKafkaMessageForSend;
       delete (window as { resendKafkaMessage?: (message: KafkaMessage) => void }).resendKafkaMessage;
     };
   }, [broker, resendMessage]);
-
-  const sendMessage = async () => {
-    if (!broker || !sendTopic || !sendValue) {
-      toast.error('Missing Information', {
-        description: 'Please provide broker, topic, and message value',
-      });
-      return;
-    }
-
-    setIsSending(true);
-
-    try {
-      const response = await fetch('/api/kafka/produce', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          broker,
-          topic: sendTopic,
-          key: sendKey || null,
-          value: sendValue,
-          headers: sendHeaders || null,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to send message');
-      }
-
-      toast.success('Message Sent', {
-        description: `Message sent to ${sendTopic} (partition: ${result.partition}, offset: ${result.offset})`,
-      });
-
-      // Clear form and close dialog
-      setSendKey('');
-      setSendValue('');
-      setSendHeaders('');
-      setShowSendDialog(false);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      toast.error('Send Failed', {
-        description: errorMessage,
-      });
-    } finally {
-      setIsSending(false);
-    }
-  };
 
   return (
     <div className='flex flex-col lg:h-full'>
@@ -696,80 +618,7 @@ export function KafkaListener({ broker, setBroker, topics, setTopics, messages, 
               <Trash2 className='mr-2 h-4 w-4' />
               Clear Messages
             </Button>
-            <Button
-              onClick={() => {
-                if (topics) {
-                  const firstTopic = topics.split(',')[0].trim();
-                  setSendTopic(firstTopic);
-                }
-                setShowSendDialog(true);
-              }}
-              variant='outline'
-              size='lg'
-              className='w-full sm:col-span-2'
-              disabled={!broker}
-            >
-              <Send className='mr-2 h-4 w-4' />
-              Send Message
-            </Button>
           </div>
-
-          {/* Send Message Dialog */}
-          <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
-            <DialogContent className='max-w-2xl max-h-[90vh] overflow-y-auto'>
-              <DialogHeader>
-                <DialogTitle className='flex items-center gap-2'>
-                  <Send className='h-5 w-5' />
-                  Send Kafka Message
-                </DialogTitle>
-                <DialogDescription>Send a message to a Kafka topic. All fields marked with * are required.</DialogDescription>
-              </DialogHeader>
-              <div className='space-y-4 py-4'>
-                <div className='space-y-2'>
-                  <Label htmlFor='send-topic' className='text-sm font-medium'>
-                    Topic *
-                  </Label>
-                  <Input id='send-topic' placeholder='Enter topic name' value={sendTopic} onChange={(e) => setSendTopic(e.target.value)} className='h-10' />
-                </div>
-                <div className='space-y-2'>
-                  <Label htmlFor='send-key' className='text-sm font-medium'>
-                    Key (optional)
-                  </Label>
-                  <Input id='send-key' placeholder='Enter message key (optional)' value={sendKey} onChange={(e) => setSendKey(e.target.value)} className='h-10' />
-                </div>
-                <div className='space-y-2'>
-                  <Label htmlFor='send-headers' className='text-sm font-medium'>
-                    Headers (JSON, optional)
-                  </Label>
-                  <Textarea id='send-headers' placeholder='{"header1": "value1", "header2": "value2"}' value={sendHeaders} onChange={(e) => setSendHeaders(e.target.value)} className='font-mono text-xs min-h-[80px] border-slate-200/60 dark:border-slate-700/50' />
-                </div>
-                <div className='space-y-2'>
-                  <Label htmlFor='send-value' className='text-sm font-medium'>
-                    Message Value (JSON) *
-                  </Label>
-                  <Textarea id='send-value' placeholder='Enter message content as JSON' value={sendValue} onChange={(e) => setSendValue(e.target.value)} className='font-mono text-xs min-h-[200px] border-slate-200/60 dark:border-slate-700/50' />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant='outline' onClick={() => setShowSendDialog(false)} disabled={isSending}>
-                  Cancel
-                </Button>
-                <Button onClick={sendMessage} disabled={isSending || !broker || !sendTopic || !sendValue}>
-                  {isSending ? (
-                    <>
-                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      <Send className='mr-2 h-4 w-4' />
-                      Send Message
-                    </>
-                  )}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </CardContent>
       </Card>
     </div>
