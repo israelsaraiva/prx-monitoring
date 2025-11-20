@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, ArrowRight, Database } from 'lucide-react';
+import { Activity, ArrowRight, Database, FileText } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Home() {
@@ -24,7 +24,7 @@ export default function Home() {
         </div>
 
         <div className='flex-1 flex items-center justify-center'>
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl'>
+          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl'>
             <Card className='border-2 border-blue-200/50 shadow-lg bg-gradient-to-br from-white to-blue-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-blue-800/30 hover:shadow-xl transition-shadow'>
               <CardHeader>
                 <div className='flex items-center gap-3 mb-2'>
@@ -87,6 +87,40 @@ export default function Home() {
                 <Link href='/kafka'>
                   <Button size='lg' className='w-full' variant='default'>
                     Open Kafka Listener
+                    <ArrowRight className='ml-2 h-4 w-4' />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className='border-2 border-purple-200/50 shadow-lg bg-gradient-to-br from-white to-purple-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-purple-800/30 hover:shadow-xl transition-shadow'>
+              <CardHeader>
+                <div className='flex items-center gap-3 mb-2'>
+                  <div className='h-12 w-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center shadow-md'>
+                    <FileText className='h-6 w-6 text-white' />
+                  </div>
+                  <CardTitle className='text-2xl'>Splunk JSON Viewer</CardTitle>
+                </div>
+                <CardDescription className='text-base'>Upload and analyze Splunk JSON log files with flow visualization</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className='space-y-2 text-sm text-muted-foreground mb-6'>
+                  <li className='flex items-center gap-2'>
+                    <ArrowRight className='h-4 w-4' />
+                    File upload and parsing
+                  </li>
+                  <li className='flex items-center gap-2'>
+                    <ArrowRight className='h-4 w-4' />
+                    Flow-based message grouping
+                  </li>
+                  <li className='flex items-center gap-2'>
+                    <ArrowRight className='h-4 w-4' />
+                    Search and filter capabilities
+                  </li>
+                </ul>
+                <Link href='/json-viewer'>
+                  <Button size='lg' className='w-full' variant='default'>
+                    Open Splunk JSON Viewer
                     <ArrowRight className='ml-2 h-4 w-4' />
                   </Button>
                 </Link>
