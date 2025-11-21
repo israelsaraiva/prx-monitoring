@@ -412,7 +412,7 @@ export function KafkaListener({ broker, setBroker, topics, setTopics, messages, 
     };
   }, []);
 
-  // Expose function to resend message via window (for MessageFlowGraph)
+  // Expose function to resend message via window (for KafkaMessageFlowGraph)
   useEffect(() => {
     (window as { resendKafkaMessage?: (message: KafkaMessage) => void }).resendKafkaMessage = (message: KafkaMessage) => {
       resendMessage(message);

@@ -1,6 +1,6 @@
 'use client';
 
-import { MessageFlowGraph } from '@/components/MessageFlowGraph';
+import { JsonMessageFlowGraph } from '@/components/JsonMessageFlowGraph';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -674,7 +674,7 @@ export default function JsonViewerPage() {
                 <CardContent className='flex-1 overflow-hidden min-h-0 flex flex-col'>
                   <div className='flex-1 min-h-0'>
                     {kafkaMessages.length > 0 ? (
-                      <MessageFlowGraph messages={filteredMessages} />
+                      <JsonMessageFlowGraph messages={filteredMessages} />
                     ) : (
                       <div className='h-full flex items-center justify-center text-muted-foreground'>
                         <p className='text-sm'>Upload a JSON file to visualize message flows</p>

@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, ChevronRight, Clock, FileText, Hash, Info, XCircle } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 
-interface KafkaMessage {
+interface JsonMessage {
   id: string;
   flowId: string;
   timestamp: Date;
@@ -20,8 +20,8 @@ interface KafkaMessage {
   structuredMessage?: string;
 }
 
-interface MessageFlowGraphProps {
-  messages: KafkaMessage[];
+interface JsonMessageFlowGraphProps {
+  messages: JsonMessage[];
 }
 
 interface ParsedMessage {
@@ -61,7 +61,6 @@ function formatMessageContent(value: string): string {
 }
 
 function highlightKeywords(text: string): React.ReactNode {
-  // Split by fail, flowId, and commandId (case-insensitive)
   const regex = /(fail|flowId|commandId)/gi;
   const parts = text.split(regex);
 
@@ -90,11 +89,11 @@ function highlightKeywords(text: string): React.ReactNode {
   });
 }
 
-export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
+export function JsonMessageFlowGraph({ messages }: JsonMessageFlowGraphProps) {
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [expandedRawMessages, setExpandedRawMessages] = useState<Set<string>>(new Set());
   const [expandedFullMessages, setExpandedFullMessages] = useState<Set<string>>(new Set());
-  const [sortAscending, setSortAscending] = useState(false); // false = newest first, true = oldest first
+  const [sortAscending, setSortAscending] = useState(false);
 
   const sortedMessages = useMemo(() => {
     return [...messages].sort((a, b) => {
@@ -111,7 +110,7 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
           <Hash className='h-8 w-8 text-purple-600 dark:text-purple-400' />
         </div>
         <p className='text-muted-foreground font-medium'>No messages received yet</p>
-        <p className='text-sm text-muted-foreground mt-1'>Connect to start receiving and visualizing messages</p>
+        <p className='text-sm text-muted-foreground mt-1'>Upload a JSON file to visualize message flows</p>
       </div>
     );
   }
@@ -181,12 +180,11 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
               {idx < sortedMessages.length - 1 && <div className='absolute left-3 top-12 w-0.5 h-8 bg-gradient-to-b from-purple-400 to-pink-400 opacity-40' />}
               <Card className='ml-2 sm:ml-6 border border-slate-200/70 dark:border-slate-700/50 border-l-4 border-l-purple-500/60 hover:border-l-purple-600 dark:border-l-purple-400/60 dark:hover:border-l-purple-400 transition-colors shadow-sm hover:shadow-md bg-gradient-to-r from-white to-purple-50/10 dark:from-slate-800 dark:to-purple-950/20'>
                 <CardContent className='p-3 sm:p-5'>
-                  {/* Simplified view */}
                   <div className='space-y-2'>
                     <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3'>
                       <div className='flex flex-wrap gap-2 items-center'>
                         <div className='flex items-center gap-1.5'>
-                          <div className='h-2.5 w-2.5 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 shadow-sm' />
+                          <div className='h-2.5 w-2.5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shadow-sm' />
                           <Badge variant='outline' className='text-[10px] px-1.5 py-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300/60 dark:border-slate-600/60'>
                             #{sortedMessages.length - idx}
                           </Badge>
@@ -260,7 +258,6 @@ export function MessageFlowGraph({ messages }: MessageFlowGraphProps) {
                     </div>
                   )}
 
-                  {/* Expandable full details */}
                   <button onClick={() => toggleMessageExpanded(msg.id)} className='mt-3 w-full flex items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors pt-2 border-t border-slate-200/60 dark:border-slate-700/40 rounded-md bg-slate-50/50 dark:bg-slate-800/30 hover:bg-slate-100/50 dark:hover:bg-slate-700/40 px-3 py-2'>
                     <div className='flex items-center gap-2'>
                       <Info className='h-3.5 w-3.5' />

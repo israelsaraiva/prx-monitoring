@@ -1,14 +1,14 @@
 'use client';
 
 import { KafkaListener } from '@/components/KafkaListener';
-import { MessageFlowGraph } from '@/components/MessageFlowGraph';
+import { KafkaMessageFlowGraph } from '@/components/KafkaMessageFlowGraph';
 import { SendMessageForm } from '@/components/SendMessageForm';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
-import { Activity, ArrowLeft, Search } from 'lucide-react';
+import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -27,6 +27,7 @@ interface KafkaMessage {
 const STORAGE_KEYS = {
   kafkaBroker: 'kafka-broker',
   kafkaTopics: 'kafka-topics',
+  kafkaMessages: 'kafka-messages',
 };
 
 export default function KafkaPage() {
@@ -36,15 +37,29 @@ export default function KafkaPage() {
   const [kafkaMessages, setKafkaMessages] = useState<KafkaMessage[]>([]);
   const [isKafkaConnected, setIsKafkaConnected] = useState(false);
   const [kafkaSearchQuery, setKafkaSearchQuery] = useState('');
+  const [isSendMessageExpanded, setIsSendMessageExpanded] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedBroker = localStorage.getItem(STORAGE_KEYS.kafkaBroker);
       const savedTopics = localStorage.getItem(STORAGE_KEYS.kafkaTopics);
+      const savedMessages = localStorage.getItem(STORAGE_KEYS.kafkaMessages);
 
       if (savedBroker) setKafkaBroker(savedBroker);
       if (savedTopics) setKafkaTopics(savedTopics);
+      if (savedMessages) {
+        try {
+          const parsed = JSON.parse(savedMessages) as Array<Omit<KafkaMessage, 'timestamp'> & { timestamp: string }>;
+          const messages: KafkaMessage[] = parsed.map((msg) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp),
+          }));
+          setKafkaMessages(messages);
+        } catch (error) {
+          console.warn('Failed to load saved messages from localStorage:', error);
+        }
+      }
     }
   }, []);
 
@@ -70,6 +85,27 @@ export default function KafkaPage() {
     }
   }, [kafkaTopics]);
 
+  // Save Kafka messages to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (kafkaMessages.length > 0) {
+        try {
+          const serialized = JSON.stringify(
+            kafkaMessages.map((msg) => ({
+              ...msg,
+              timestamp: msg.timestamp.toISOString(),
+            }))
+          );
+          localStorage.setItem(STORAGE_KEYS.kafkaMessages, serialized);
+        } catch (error) {
+          console.warn('Failed to save messages to localStorage:', error);
+        }
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.kafkaMessages);
+      }
+    }
+  }, [kafkaMessages]);
+
   // Kafka handlers
   const handleKafkaDisconnect = () => {
     setIsKafkaConnected(false);
@@ -83,6 +119,7 @@ export default function KafkaPage() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(STORAGE_KEYS.kafkaBroker);
       localStorage.removeItem(STORAGE_KEYS.kafkaTopics);
+      localStorage.removeItem(STORAGE_KEYS.kafkaMessages);
     }
   };
 
@@ -164,21 +201,13 @@ export default function KafkaPage() {
             {/* Message Flow Visualization and Send Message - Right Side */}
             <div className='w-full lg:flex-1 overflow-hidden h-full'>
               <div className='h-full flex flex-col lg:flex-row gap-4'>
-                {/* Send Message Card */}
-                <div className='w-full lg:w-[400px] lg:shrink-0'>
-                  <Card className='h-full border-2 border-teal-200/50 shadow-lg bg-gradient-to-br from-white to-teal-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-teal-800/30 flex flex-col'>
-                    <CardContent className='flex-1 overflow-hidden min-h-0 p-4 lg:p-6'>
-                      <SendMessageForm broker={kafkaBroker} defaultTopic={kafkaTopics.split(',')[0]?.trim()} />
-                    </CardContent>
-                  </Card>
-                </div>
                 {/* Message Flow Visualization Card */}
                 <div className='flex-1 min-h-0 overflow-hidden'>
                   <Card className='border-2 border-purple-200/50 shadow-lg bg-gradient-to-br from-white to-purple-50/20 dark:from-slate-900 dark:to-slate-800 dark:border-purple-800/30 h-full flex flex-col min-h-0'>
                     <CardHeader className='pb-4 flex-shrink-0'>
                       <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3'>
                         <div>
-                          <CardTitle className='text-xl sm:text-2xl'>Message Flow Visualization</CardTitle>
+                          <CardTitle className='text-xl sm:text-2xl'>Kafka Messages Flow Visualization</CardTitle>
                           <CardDescription className='mt-1 text-xs sm:text-sm'>Messages grouped by flowId and displayed in a graph format</CardDescription>
                         </div>
                         {kafkaMessages.length > 0 && (
@@ -212,10 +241,31 @@ export default function KafkaPage() {
                     </CardHeader>
                     <CardContent className='flex-1 overflow-hidden min-h-0 flex flex-col'>
                       <div className='flex-1 min-h-0'>
-                        <MessageFlowGraph messages={filteredKafkaMessages} />
+                        <KafkaMessageFlowGraph messages={filteredKafkaMessages} />
                       </div>
                     </CardContent>
                   </Card>
+                </div>
+                {/* Send Message Card - Collapsible */}
+                <div className='relative flex items-center'>
+                  {/* Toggle Button */}
+                  <Button
+                    onClick={() => setIsSendMessageExpanded(!isSendMessageExpanded)}
+                    variant='outline'
+                    size='icon'
+                    className='h-12 w-8 rounded-l-md rounded-r-none border-r-0 border-2 border-teal-200/50 dark:border-teal-800/30 bg-teal-100 dark:bg-teal-900 hover:bg-teal-200 dark:hover:bg-teal-800 z-10 flex-shrink-0'
+                    aria-label={isSendMessageExpanded ? 'Collapse send message' : 'Expand send message'}
+                  >
+                    {isSendMessageExpanded ? <ChevronRight className='h-4 w-4' /> : <ChevronLeft className='h-4 w-4' />}
+                  </Button>
+                  {/* Send Message Card */}
+                  <div className={`h-full transition-all duration-300 ease-in-out overflow-hidden ${isSendMessageExpanded ? 'w-[400px] opacity-100' : 'w-0 opacity-0'}`}>
+                    <Card className='h-full border-2 border-teal-200/50 shadow-lg bg-gradient-to-br from-white to-teal-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-teal-800/30 flex flex-col'>
+                      <CardContent className='flex-1 overflow-hidden min-h-0 p-4 lg:p-6'>
+                        <SendMessageForm broker={kafkaBroker} defaultTopic={kafkaTopics.split(',')[0]?.trim()} />
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               </div>
             </div>

@@ -5,7 +5,7 @@ import { CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Send } from 'lucide-react';
+import { Loader2, Send, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -61,9 +61,6 @@ export function SendMessageForm({ broker, defaultTopic, onMessageSent }: SendMes
         description: `Message sent to ${sendTopic} (partition: ${result.partition}, offset: ${result.offset})`,
       });
 
-      setSendKey('');
-      setSendValue('');
-      setSendHeaders('');
       onMessageSent?.();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -82,6 +79,16 @@ export function SendMessageForm({ broker, defaultTopic, onMessageSent }: SendMes
     } catch {
       return value;
     }
+  };
+
+  const clearForm = () => {
+    setSendTopic(defaultTopic || '');
+    setSendKey('');
+    setSendValue('');
+    setSendHeaders('');
+    toast.info('Form Cleared', {
+      description: 'Send message form has been cleared',
+    });
   };
 
   useEffect(() => {
@@ -108,7 +115,7 @@ export function SendMessageForm({ broker, defaultTopic, onMessageSent }: SendMes
   return (
     <div className='space-y-4 h-full flex flex-col'>
       <div className='shrink-0'>
-        <CardTitle className='text-xl sm:text-2xl flex items-center gap-2'>Send Message</CardTitle>
+        <CardTitle className='text-xl sm:text-2xl flex items-center gap-2'>Send Kafka Message</CardTitle>
         <CardDescription className='mt-1 text-xs sm:text-sm'>Send a message to a Kafka topic</CardDescription>
       </div>
       <div className='flex-1 flex flex-col min-h-0 space-y-4 pr-2'>
@@ -139,7 +146,7 @@ export function SendMessageForm({ broker, defaultTopic, onMessageSent }: SendMes
           <Textarea id='send-value' placeholder='Enter message content as JSON' value={sendValue} onChange={(e) => setSendValue(e.target.value)} className='font-mono text-xs flex-1 border-slate-200/60 dark:border-slate-700/50' />
         </div>
       </div>
-      <div className='shrink-0 pt-2 border-t-gray-400'>
+      <div className='shrink-0 pt-2 border-t-gray-400 space-y-2'>
         <Button onClick={sendMessage} disabled={isSending || !broker || !sendTopic || !sendValue} className='w-full' size='lg'>
           {isSending ? (
             <>
@@ -152,6 +159,10 @@ export function SendMessageForm({ broker, defaultTopic, onMessageSent }: SendMes
               Send Message
             </>
           )}
+        </Button>
+        <Button onClick={clearForm} variant='outline' disabled={isSending} className='w-full' size='sm'>
+          <Trash2 className='mr-2 h-4 w-4' />
+          Clear Form
         </Button>
       </div>
     </div>
