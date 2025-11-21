@@ -31,8 +31,8 @@ export function JsonViewer({ value, maxHeight = '300px' }: JsonViewerProps) {
 
   if (!mounted) {
     return (
-      <div className='min-h-[100px] w-full rounded-md border border-slate-200/60 dark:border-slate-700/40 bg-background px-3 py-2 text-sm font-mono text-muted-foreground overflow-auto'>
-        <pre className='whitespace-pre-wrap'>{value}</pre>
+      <div className="min-h-[100px] w-full rounded-md border border-slate-200/60 dark:border-slate-700/40 bg-background px-3 py-2 text-sm font-mono text-muted-foreground overflow-auto">
+        <pre className="whitespace-pre-wrap">{value}</pre>
       </div>
     );
   }
@@ -41,10 +41,10 @@ export function JsonViewer({ value, maxHeight = '300px' }: JsonViewerProps) {
   const isDark = resolvedTheme === 'dark';
 
   return (
-    <div className='border border-slate-200/60 dark:border-slate-700/40 rounded-md overflow-hidden'>
+    <div className="border border-slate-200/60 dark:border-slate-700/40 rounded-md overflow-hidden">
       <Editor
         height={maxHeight}
-        language='json'
+        language="json"
         value={formattedJson}
         theme={isDark ? 'vs-dark' : 'light'}
         options={{

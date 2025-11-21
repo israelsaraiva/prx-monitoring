@@ -13,9 +13,10 @@ interface SendMessageFormProps {
   broker: string;
   defaultTopic?: string;
   onMessageSent?: () => void;
+  onExpand?: () => void;
 }
 
-export function SendMessageForm({ broker, defaultTopic, onMessageSent }: SendMessageFormProps) {
+export function SendMessageForm({ broker, defaultTopic, onMessageSent, onExpand }: SendMessageFormProps) {
   const [sendTopic, setSendTopic] = useState(defaultTopic || '');
   const [sendKey, setSendKey] = useState('');
   const [sendValue, setSendValue] = useState('');
@@ -96,72 +97,105 @@ export function SendMessageForm({ broker, defaultTopic, onMessageSent }: SendMes
       setSendTopic(topic);
       setSendKey(key || '');
       setSendValue(formatMessageValue(value));
+      onExpand?.();
       toast.info('Message Parameters Loaded', {
         description: 'Message parameters have been loaded into the send form',
       });
     };
 
     if (typeof window !== 'undefined') {
-      (window as { useKafkaMessageForSend?: (topic: string, key: string | null, value: string) => void }).useKafkaMessageForSend = loadMessage;
+      (
+        window as { useKafkaMessageForSend?: (topic: string, key: string | null, value: string) => void }
+      ).useKafkaMessageForSend = loadMessage;
     }
 
     return () => {
       if (typeof window !== 'undefined') {
-        delete (window as { useKafkaMessageForSend?: (topic: string, key: string | null, value: string) => void }).useKafkaMessageForSend;
+        delete (window as { useKafkaMessageForSend?: (topic: string, key: string | null, value: string) => void })
+          .useKafkaMessageForSend;
       }
     };
-  }, []);
+  }, [onExpand]);
 
   return (
-    <div className='space-y-4 h-full flex flex-col'>
-      <div className='shrink-0'>
-        <CardTitle className='text-xl sm:text-2xl flex items-center gap-2'>Send Kafka Message</CardTitle>
-        <CardDescription className='mt-1 text-xs sm:text-sm'>Send a message to a Kafka topic</CardDescription>
+    <div className="space-y-4 h-full flex flex-col">
+      <div className="shrink-0">
+        <CardTitle className="text-xl sm:text-2xl flex items-center gap-2">Send Kafka Message</CardTitle>
+        <CardDescription className="mt-1 text-xs sm:text-sm">Send a message to a Kafka topic</CardDescription>
       </div>
-      <div className='flex-1 flex flex-col min-h-0 space-y-4 pr-2'>
-        <div className='space-y-4 overflow-y-auto'>
-          <div className='space-y-2'>
-            <Label htmlFor='send-topic' className='text-sm font-medium'>
+      <div className="flex-1 flex flex-col min-h-0 space-y-4 pr-2">
+        <div className="space-y-4 overflow-y-auto">
+          <div className="space-y-2">
+            <Label htmlFor="send-topic" className="text-sm font-medium">
               Topic *
             </Label>
-            <Input id='send-topic' placeholder='Enter topic name' value={sendTopic} onChange={(e) => setSendTopic(e.target.value)} className='h-10' />
+            <Input
+              id="send-topic"
+              placeholder="Enter topic name"
+              value={sendTopic}
+              onChange={(e) => setSendTopic(e.target.value)}
+              className="h-10"
+            />
           </div>
-          <div className='space-y-2'>
-            <Label htmlFor='send-key' className='text-sm font-medium'>
+          <div className="space-y-2">
+            <Label htmlFor="send-key" className="text-sm font-medium">
               Key (optional)
             </Label>
-            <Input id='send-key' placeholder='Enter message key (optional)' value={sendKey} onChange={(e) => setSendKey(e.target.value)} className='h-10' />
+            <Input
+              id="send-key"
+              placeholder="Enter message key (optional)"
+              value={sendKey}
+              onChange={(e) => setSendKey(e.target.value)}
+              className="h-10"
+            />
           </div>
-          <div className='space-y-2'>
-            <Label htmlFor='send-headers' className='text-sm font-medium'>
+          <div className="space-y-2">
+            <Label htmlFor="send-headers" className="text-sm font-medium">
               Headers (JSON, optional)
             </Label>
-            <Textarea id='send-headers' placeholder='{"header1": "value1", "header2": "value2"}' value={sendHeaders} onChange={(e) => setSendHeaders(e.target.value)} className='font-mono text-xs min-h-[80px] border-slate-200/60 dark:border-slate-700/50' />
+            <Textarea
+              id="send-headers"
+              placeholder='{"header1": "value1", "header2": "value2"}'
+              value={sendHeaders}
+              onChange={(e) => setSendHeaders(e.target.value)}
+              className="font-mono text-xs min-h-[80px] border-slate-200/60 dark:border-slate-700/50"
+            />
           </div>
         </div>
-        <div className='space-y-2 flex-1 flex flex-col min-h-0'>
-          <Label htmlFor='send-value' className='text-sm font-medium'>
+        <div className="space-y-2 flex-1 flex flex-col min-h-0">
+          <Label htmlFor="send-value" className="text-sm font-medium">
             Message Value (JSON) *
           </Label>
-          <Textarea id='send-value' placeholder='Enter message content as JSON' value={sendValue} onChange={(e) => setSendValue(e.target.value)} className='font-mono text-xs flex-1 border-slate-200/60 dark:border-slate-700/50' />
+          <Textarea
+            id="send-value"
+            placeholder="Enter message content as JSON"
+            value={sendValue}
+            onChange={(e) => setSendValue(e.target.value)}
+            className="font-mono text-xs flex-1 border-slate-200/60 dark:border-slate-700/50"
+          />
         </div>
       </div>
-      <div className='shrink-0 pt-2 border-t-gray-400 space-y-2'>
-        <Button onClick={sendMessage} disabled={isSending || !broker || !sendTopic || !sendValue} className='w-full' size='lg'>
+      <div className="shrink-0 pt-2 border-t-gray-400 space-y-2">
+        <Button
+          onClick={sendMessage}
+          disabled={isSending || !broker || !sendTopic || !sendValue}
+          className="w-full"
+          size="lg"
+        >
           {isSending ? (
             <>
-              <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Sending...
             </>
           ) : (
             <>
-              <Send className='mr-2 h-4 w-4' />
+              <Send className="mr-2 h-4 w-4" />
               Send Message
             </>
           )}
         </Button>
-        <Button onClick={clearForm} variant='outline' disabled={isSending} className='w-full' size='sm'>
-          <Trash2 className='mr-2 h-4 w-4' />
+        <Button onClick={clearForm} variant="outline" disabled={isSending} className="w-full" size="sm">
+          <Trash2 className="mr-2 h-4 w-4" />
           Clear Form
         </Button>
       </div>

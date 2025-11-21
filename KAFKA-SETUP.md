@@ -5,16 +5,19 @@ This guide explains how to set up a local Kafka instance for testing the Subscri
 ## Quick Start
 
 ### Prerequisites
+
 - Docker and Docker Compose installed on your system
 
 ### Starting Kafka
 
 1. **Start the Kafka cluster:**
+
    ```bash
    docker-compose up -d
    ```
 
 2. **Verify services are running:**
+
    ```bash
    docker-compose ps
    ```
@@ -31,6 +34,7 @@ docker-compose down
 ```
 
 To also remove volumes (clean slate):
+
 ```bash
 docker-compose down -v
 ```
@@ -68,6 +72,7 @@ The setup includes three services:
 ## Creating Test Topics
 
 ### Using Kafka UI
+
 1. Open http://localhost:8080
 2. Navigate to "Topics"
 3. Click "Add a Topic"
@@ -75,6 +80,7 @@ The setup includes three services:
 5. Click "Create Topic"
 
 ### Using Kafka CLI (inside container)
+
 ```bash
 # Create a topic
 docker exec -it kafka-broker kafka-topics --create \
@@ -104,12 +110,14 @@ docker exec -it kafka-broker kafka-console-consumer \
 To test the flowId linking feature, produce messages with flowId in headers or JSON content:
 
 ### Using Kafka CLI with Headers
+
 ```bash
 # Note: kafka-console-producer doesn't support headers directly
 # Use a script or Kafka UI instead
 ```
 
 ### Using Kafka UI
+
 1. Go to http://localhost:8080
 2. Select your topic
 3. Click "Produce Message"
@@ -128,6 +136,7 @@ To test the flowId linking feature, produce messages with flowId in headers or J
 ### Using a Simple Producer Script
 
 Create a file `produce-test-messages.js`:
+
 ```javascript
 const { Kafka } = require('kafkajs');
 
@@ -140,24 +149,28 @@ const producer = kafka.producer();
 
 async function produceMessages() {
   await producer.connect();
-  
+
   const messages = [
     {
       topic: 'test-topic',
-      messages: [{
-        headers: { flowId: 'flow-123' },
-        value: JSON.stringify({ message: 'Message 1', flowId: 'flow-123' }),
-      }],
+      messages: [
+        {
+          headers: { flowId: 'flow-123' },
+          value: JSON.stringify({ message: 'Message 1', flowId: 'flow-123' }),
+        },
+      ],
     },
     {
       topic: 'test-topic',
-      messages: [{
-        headers: { flowId: 'flow-123' },
-        value: JSON.stringify({ message: 'Message 2', flowId: 'flow-123' }),
-      }],
+      messages: [
+        {
+          headers: { flowId: 'flow-123' },
+          value: JSON.stringify({ message: 'Message 2', flowId: 'flow-123' }),
+        },
+      ],
     },
   ];
-  
+
   await producer.sendBatch({ topicMessages: messages });
   await producer.disconnect();
   console.log('Messages sent!');
@@ -171,15 +184,18 @@ Run with: `node produce-test-messages.js`
 ## Troubleshooting
 
 ### Kafka not accessible
+
 - Ensure Docker is running
 - Check if ports 9092, 2181, and 8080 are available
 - Verify containers are running: `docker-compose ps`
 
 ### Connection timeout
+
 - Wait a few seconds after starting containers for Kafka to fully initialize
 - Check Kafka logs: `docker-compose logs kafka`
 
 ### Topics not appearing
+
 - Topics are auto-created when first message is produced
 - Use Kafka UI to verify topics exist
 - Check topic list: `docker exec kafka-broker kafka-topics --list --bootstrap-server localhost:9093`
@@ -187,10 +203,10 @@ Run with: `node produce-test-messages.js`
 ## Configuration
 
 The Kafka setup uses default settings suitable for local development:
+
 - Single broker (not suitable for production)
 - Auto topic creation enabled
 - No authentication/authorization
 - Plaintext protocol
 
 For production use, configure proper security, replication, and multiple brokers.
-

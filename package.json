@@ -7,12 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "kafka:up": "docker-compose up -d",
     "kafka:down": "docker-compose down",
     "kafka:logs": "docker-compose logs -f kafka",
     "kafka:status": "docker-compose ps",
     "kafka:produce": "node scripts/produce-test-messages.js",
-    "graphql:test": "node scripts/graphql-test-server.js"
+    "graphql:test": "node scripts/graphql-test-server.js",
+    "prepare": "husky"
   },
   "dependencies": {
     "@apollo/client": "^3.9.0",
@@ -48,9 +51,18 @@
     "autoprefixer": "^10.4.16",
     "eslint": "^8.55.0",
     "eslint-config-next": "^14.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "postcss": "^8.4.32",
+    "prettier": "^3.6.2",
     "tailwindcss": "latest",
     "tailwindcss-animate": "latest",
     "typescript": "^5.2.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,css,md}": [
+      "prettier --write"
+    ]
   }
 }

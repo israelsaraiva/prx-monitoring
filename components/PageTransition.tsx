@@ -13,5 +13,9 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
     setIsAnimating(false);
   }, [pathname, children]);
 
-  return <div className={`transition-opacity duration-300 ease-in-out ${isAnimating ? 'opacity-0' : 'opacity-100'}`}>{displayChildren}</div>;
+  return (
+    <div className={`transition-opacity duration-300 ease-in-out ${isAnimating ? 'opacity-0' : 'opacity-100'}`}>
+      {displayChildren}
+    </div>
+  );
 }

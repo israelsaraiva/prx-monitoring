@@ -91,32 +91,38 @@ export default function GraphQLPage() {
   };
 
   return (
-    <div className='h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 animate-in fade-in duration-300'>
-      <div className='h-full max-w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8 flex flex-col'>
-        <div className='mb-4 sm:mb-6 flex-shrink-0'>
-          <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-2'>
-            <div className='flex items-start gap-2 sm:gap-3'>
-              <div className='h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg flex-shrink-0'>
-                <Database className='h-4 w-4 sm:h-6 sm:w-6 text-white' />
+    <div className="h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 animate-in fade-in duration-300">
+      <div className="h-full max-w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8 flex flex-col">
+        <div className="mb-4 sm:mb-6 flex-shrink-0">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-2">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                <Database className="h-4 w-4 sm:h-6 sm:w-6 text-white" />
               </div>
               <div>
-                <h1 className='text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight'>GraphQL Subscriptions</h1>
-                <p className='text-sm sm:text-base text-muted-foreground mt-1'>Real-time GraphQL subscription monitoring</p>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight">GraphQL Subscriptions</h1>
+                <p className="text-sm sm:text-base text-muted-foreground mt-1">
+                  Real-time GraphQL subscription monitoring
+                </p>
               </div>
             </div>
-            <div className='flex items-center gap-2'>
+            <div className="flex items-center gap-2">
               <ThemeToggle />
-              <Link href='/'>
-                <Button variant='outline' size='icon' className='border-2 border-slate-300 dark:border-slate-600 bg-background hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 transition-all h-10 w-10'>
-                  <ArrowLeft className='h-4 w-4' />
-                  <span className='sr-only'>Home</span>
+              <Link href="/">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="border-2 border-slate-300 dark:border-slate-600 bg-background hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 transition-all h-10 w-10"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="sr-only">Home</span>
                 </Button>
               </Link>
             </div>
           </div>
         </div>
 
-        <div className='flex-1 min-h-0'>
+        <div className="flex-1 min-h-0">
           <GraphQLSubscription
             endpoint={graphQLEndpoint}
             setEndpoint={setGraphQLEndpoint}

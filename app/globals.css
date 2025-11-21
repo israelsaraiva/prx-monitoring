@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @plugin "tailwindcss-animate";
 
@@ -321,7 +321,11 @@
   }
 
   html {
-    font-family: 'Jost', system-ui, -apple-system, sans-serif;
+    font-family:
+      'Jost',
+      system-ui,
+      -apple-system,
+      sans-serif;
   }
 
   body {

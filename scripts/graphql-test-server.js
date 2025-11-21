@@ -126,7 +126,9 @@ useServer(
     subscribe: async (args) => {
       try {
         const document = args.document;
-        const operation = document.definitions.find((def) => def.kind === 'OperationDefinition' && def.operation === 'subscription');
+        const operation = document.definitions.find(
+          (def) => def.kind === 'OperationDefinition' && def.operation === 'subscription'
+        );
 
         if (!operation) {
           throw new Error('No subscription operation found in query');

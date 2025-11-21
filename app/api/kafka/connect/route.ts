@@ -69,11 +69,17 @@ export async function POST(request: NextRequest) {
     });
 
     try {
-      await Promise.race([consumer.connect(), new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_TIMEOUT))]);
+      await Promise.race([
+        consumer.connect(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_TIMEOUT)),
+      ]);
     } catch (error) {
       return Response.json(
         {
-          error: error instanceof Error ? `Failed to connect to Kafka broker: ${error.message}` : 'Failed to connect to Kafka broker',
+          error:
+            error instanceof Error
+              ? `Failed to connect to Kafka broker: ${error.message}`
+              : 'Failed to connect to Kafka broker',
         },
         { status: 500 }
       );
@@ -94,7 +100,10 @@ export async function POST(request: NextRequest) {
       await consumer.disconnect();
       return Response.json(
         {
-          error: error instanceof Error ? `Failed to subscribe to topics: ${error.message}` : 'Failed to subscribe to topics',
+          error:
+            error instanceof Error
+              ? `Failed to subscribe to topics: ${error.message}`
+              : 'Failed to subscribe to topics',
         },
         { status: 500 }
       );
@@ -189,7 +198,9 @@ export async function POST(request: NextRequest) {
               offset: String(message.offset),
               key: message.key?.toString() || null,
               value: message.value?.toString() || '',
-              headers: message.headers ? Object.fromEntries(Object.entries(message.headers).map(([k, v]) => [k, v?.toString()])) : {},
+              headers: message.headers
+                ? Object.fromEntries(Object.entries(message.headers).map(([k, v]) => [k, v?.toString()]))
+                : {},
               timestamp: Date.now(),
               flowId,
               flowIdSource,
@@ -227,7 +238,12 @@ export async function POST(request: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ENOTFOUND')) {
-      return Response.json({ error: `Cannot connect to Kafka broker. Please check if the broker is running and accessible at the provided address.` }, { status: 500 });
+      return Response.json(
+        {
+          error: `Cannot connect to Kafka broker. Please check if the broker is running and accessible at the provided address.`,
+        },
+        { status: 500 }
+      );
     }
 
     return Response.json({ error: `Failed to connect to Kafka: ${errorMessage}` }, { status: 500 });
