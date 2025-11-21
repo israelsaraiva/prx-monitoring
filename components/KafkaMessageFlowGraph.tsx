@@ -417,6 +417,22 @@ export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) 
                                 <Button
                                   onClick={async () => {
                                     try {
+                                      let parsedValue: unknown;
+                                      try {
+                                        parsedValue = JSON.parse(msg.value);
+                                      } catch {
+                                        parsedValue = msg.value;
+                                      }
+
+                                      let parsedRawMessage: unknown | undefined;
+                                      if (msg.rawMessage) {
+                                        try {
+                                          parsedRawMessage = JSON.parse(msg.rawMessage);
+                                        } catch {
+                                          parsedRawMessage = msg.rawMessage;
+                                        }
+                                      }
+
                                       const messageJson = JSON.stringify(
                                         {
                                           id: msg.id,
@@ -426,11 +442,11 @@ export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) 
                                           partition: msg.partition,
                                           offset: msg.offset,
                                           key: msg.key,
-                                          value: JSON.parse(msg.value),
+                                          value: parsedValue,
                                           flowIdSource: msg.flowIdSource,
                                           containerName: msg.containerName,
                                           level: msg.level,
-                                          rawMessage: msg.rawMessage ? JSON.parse(msg.rawMessage) : undefined,
+                                          rawMessage: parsedRawMessage,
                                           structuredMessage: msg.structuredMessage,
                                         },
                                         null,
