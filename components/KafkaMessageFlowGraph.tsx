@@ -398,20 +398,64 @@ export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) 
                               </div>
                             )}
 
-                            <button
-                              onClick={() => toggleMessageExpanded(msg.id)}
-                              className="mt-3 w-full flex items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors pt-2 border-t border-slate-200/60 dark:border-slate-700/40"
-                            >
-                              <div className="flex items-center gap-2">
-                                <FileText className="h-3.5 w-3.5" />
-                                <span>Message Details</span>
-                              </div>
-                              <span
-                                className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
+                            <div className="mt-3 flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/40">
+                              <button
+                                onClick={() => toggleMessageExpanded(msg.id)}
+                                className="flex-1 flex items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors"
                               >
-                                <ChevronRight className="h-3 w-3" />
-                              </span>
-                            </button>
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-3.5 w-3.5" />
+                                  <span>Message Details</span>
+                                </div>
+                                <span
+                                  className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
+                                >
+                                  <ChevronRight className="h-3 w-3" />
+                                </span>
+                              </button>
+                              {isExpanded && (
+                                <Button
+                                  onClick={async () => {
+                                    try {
+                                      const messageJson = JSON.stringify(
+                                        {
+                                          id: msg.id,
+                                          flowId: msg.flowId,
+                                          timestamp: msg.timestamp.toISOString(),
+                                          topic: msg.topic,
+                                          partition: msg.partition,
+                                          offset: msg.offset,
+                                          key: msg.key,
+                                          value: JSON.parse(msg.value),
+                                          flowIdSource: msg.flowIdSource,
+                                          containerName: msg.containerName,
+                                          level: msg.level,
+                                          rawMessage: msg.rawMessage ? JSON.parse(msg.rawMessage) : undefined,
+                                          structuredMessage: msg.structuredMessage,
+                                        },
+                                        null,
+                                        2
+                                      );
+                                      await navigator.clipboard.writeText(messageJson);
+                                      toast.success('Copied to Clipboard', {
+                                        description: 'Message details copied to clipboard',
+                                      });
+                                    } catch (error) {
+                                      console.error('Failed to copy to clipboard:', error);
+                                      toast.error('Copy Failed', {
+                                        description: 'Failed to copy message details to clipboard',
+                                      });
+                                    }
+                                  }}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  title="Copy message details to clipboard as JSON"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
 
                             <div
                               className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0 mt-0'}`}

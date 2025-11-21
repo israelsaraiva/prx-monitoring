@@ -51,7 +51,7 @@ export function JsonViewer({ value, maxHeight = '300px' }: JsonViewerProps) {
           readOnly: true,
           minimap: { enabled: false },
           fontSize: 12,
-          fontFamily: "var(--font-jost), 'Fira Code', 'Courier New', monospace",
+          fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
           lineNumbers: 'on',
           lineNumbersMinChars: 3,
           scrollBeyondLastLine: false,

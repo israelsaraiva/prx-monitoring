@@ -171,7 +171,7 @@ export function SendMessageForm({ broker, defaultTopic, onMessageSent, onExpand 
             placeholder="Enter message content as JSON"
             value={sendValue}
             onChange={(e) => setSendValue(e.target.value)}
-            className="font-mono text-xs flex-1 border-slate-200/60 dark:border-slate-700/50"
+            className="font-mono text-[10px] flex-1 border-slate-200/60 dark:border-slate-700/50"
           />
         </div>
       </div>

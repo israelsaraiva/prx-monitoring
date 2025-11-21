@@ -46,7 +46,7 @@ export function GraphQLCodeEditor({
         options={{
           minimap: { enabled: false },
           fontSize: 14,
-          fontFamily: "var(--font-jost), 'Fira Code', 'Courier New', monospace",
+          fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
           lineNumbers: 'on',
           lineNumbersMinChars: 3,
           scrollBeyondLastLine: false,
