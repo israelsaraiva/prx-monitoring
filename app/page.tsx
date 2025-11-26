@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, ArrowRight, Database, FileText } from 'lucide-react';
+import { Activity, ArrowRight, Code, Database, FileText } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Home() {
@@ -26,7 +26,7 @@ export default function Home() {
         </div>
 
         <div className="flex-1 flex items-center justify-center">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-7xl">
             <Card className="border-2 border-blue-200/50 shadow-lg bg-gradient-to-br from-white to-blue-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-blue-800/30 hover:shadow-xl transition-shadow">
               <CardHeader>
                 <div className="flex items-center gap-3 mb-2">
@@ -129,6 +129,42 @@ export default function Home() {
                 <Link href="/json-viewer">
                   <Button size="lg" className="w-full" variant="default">
                     Open Splunk JSON Viewer
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 border-green-200/50 shadow-lg bg-gradient-to-br from-white to-green-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-green-800/30 hover:shadow-xl transition-shadow">
+              <CardHeader>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-md">
+                    <Code className="h-6 w-6 text-white" />
+                  </div>
+                  <CardTitle className="text-2xl">cURL Converter</CardTitle>
+                </div>
+                <CardDescription className="text-base">
+                  Convert bash curl commands to REST Client extension format
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm text-muted-foreground mb-6">
+                  <li className="flex items-center gap-2">
+                    <ArrowRight className="h-4 w-4" />
+                    Parse curl commands
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <ArrowRight className="h-4 w-4" />
+                    Generate REST Client format
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <ArrowRight className="h-4 w-4" />
+                    Copy to clipboard
+                  </li>
+                </ul>
+                <Link href="/curl-converter">
+                  <Button size="lg" className="w-full" variant="default">
+                    Open cURL Converter
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
