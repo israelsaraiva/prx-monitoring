@@ -197,6 +197,88 @@ function extractHostname(rawUrl: string) {
   }
 }
 
+function isLocalUrl(url: URL) {
+  const h = url.hostname;
+  return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h.endsWith('.localhost');
+}
+
+async function sendDirectRequest(
+  urlObject: URL,
+  method: string,
+  headers: Record<string, string>,
+  requestBody: unknown,
+  timeoutMs: number
+): Promise<Exclude<RequestResponse, { error: string }>> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const startTime = Date.now();
+
+  const fetchOptions: RequestInit = {
+    method,
+    headers,
+    signal: controller.signal,
+  };
+
+  if (!['GET', 'HEAD'].includes(method.toUpperCase()) && requestBody != null) {
+    if (typeof requestBody === 'string') {
+      fetchOptions.body = requestBody;
+    } else if (
+      typeof requestBody === 'object' &&
+      requestBody !== null &&
+      'type' in requestBody &&
+      'entries' in requestBody
+    ) {
+      const rb = requestBody as { type: string; entries: [string, string][] };
+      if (rb.type === 'urlencoded') {
+        fetchOptions.body = new URLSearchParams(rb.entries);
+      } else if (rb.type === 'form-data') {
+        const fd = new FormData();
+        rb.entries.forEach(([k, v]) => fd.append(k, v));
+        fetchOptions.body = fd;
+        // Remove content-type so browser sets multipart boundary
+        Object.keys(headers).forEach((k) => {
+          if (k.toLowerCase() === 'content-type') delete headers[k];
+        });
+      }
+    } else {
+      fetchOptions.body = JSON.stringify(requestBody);
+    }
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(urlObject.toString(), fetchOptions);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const time = Date.now() - startTime;
+  const responseHeaders: Record<string, string> = {};
+  response.headers.forEach((value, key) => {
+    responseHeaders[key] = value;
+  });
+
+  const responseText = await response.text();
+  let responseData: unknown;
+  let isJson = false;
+  try {
+    responseData = JSON.parse(responseText);
+    isJson = true;
+  } catch {
+    responseData = responseText;
+  }
+
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+    data: responseData,
+    isJson,
+    time,
+    size: responseText.length,
+  };
+}
+
 function buildSavedRequest(tab: RequestTab, collectionId: string, name: string): SavedRequest {
   return {
     id: createId(),
@@ -338,7 +420,11 @@ export default function RestClientPage() {
   const [history, setHistoryState] = useState<HistoryEntry[]>([]);
   const [environments, setEnvironmentsState] = useState<Environment[]>([]);
   const [activeEnvironmentId, setActiveEnvironmentIdState] = useState<string | null>(null);
-  const [settingsDraft, setSettingsDraft] = useState<RestClientSettings>({ timeout: 30000, sslVerification: true });
+  const [settingsDraft, setSettingsDraft] = useState<RestClientSettings>({
+    timeout: 30000,
+    sslVerification: true,
+    useServerProxy: false,
+  });
   const [collectionSearch, setCollectionSearch] = useState('');
   const [showNewCollectionInput, setShowNewCollectionInput] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
@@ -678,20 +764,41 @@ export default function RestClientPage() {
           }
         }
 
-        const response = await fetch('/api/proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: urlObject.toString(),
-            method: activeTab.method,
-            headers,
-            body: requestBody,
-            timeout: settingsDraft.timeout,
-            sslVerification: settingsDraft.sslVerification,
-          }),
-        });
-
-        const data = (await response.json()) as RequestResponse;
+        let data: RequestResponse;
+        const useProxy = settingsDraft.useServerProxy && !isLocalUrl(urlObject);
+        if (!useProxy) {
+          // Direct browser fetch — respects system/company proxy and works for localhost
+          try {
+            data = await sendDirectRequest(
+              urlObject,
+              activeTab.method,
+              headers,
+              requestBody,
+              settingsDraft.timeout ?? 30000
+            );
+          } catch (directError: any) {
+            const isTimeout = directError?.name === 'AbortError';
+            data = {
+              error: isTimeout ? 'Request timed out' : (directError?.message ?? 'Failed to execute request'),
+              errorCode: isTimeout ? 'TIMEOUT' : 'CLIENT_ERROR',
+              time: 0,
+            };
+          }
+        } else {
+          const response = await fetch('/api/proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url: urlObject.toString(),
+              method: activeTab.method,
+              headers,
+              body: requestBody,
+              timeout: settingsDraft.timeout,
+              sslVerification: settingsDraft.sslVerification,
+            }),
+          });
+          data = (await response.json()) as RequestResponse;
+        }
 
         if ('error' in data) {
           // Preserve errorCode and time from the structured proxy error response
@@ -1970,9 +2077,26 @@ export default function RestClientPage() {
                   />
                   SSL Verification
                 </label>
-                <p className="text-[11px] text-gray-400 dark:text-slate-500">
-                  Stored locally for future proxy support.
-                </p>
+                <label className="flex items-start gap-3 rounded border border-gray-200 dark:border-[#222222] bg-gray-50 dark:bg-[#171717] px-3 py-3 text-sm text-gray-700 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={!!settingsDraft.useServerProxy}
+                    onChange={(event) =>
+                      setSettingsDraft((current) => ({
+                        ...current,
+                        useServerProxy: event.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-400 dark:border-[#444] bg-transparent text-[#5b5bff] focus:ring-[#5b5bff]"
+                  />
+                  <span>
+                    Use Server Proxy
+                    <span className="mt-0.5 block text-[11px] text-gray-400 dark:text-slate-500">
+                      Routes requests through the server to bypass CORS. Disable if you&apos;re behind a company proxy
+                      or targeting localhost.
+                    </span>
+                  </span>
+                </label>
                 <Button
                   type="button"
                   onClick={() => {
