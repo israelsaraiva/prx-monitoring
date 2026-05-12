@@ -205,6 +205,20 @@ function isLocalUrl(url: URL) {
   return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h.endsWith('.localhost');
 }
 
+function applyLocalProxy(urlObject: URL, localProxyUrl: string): URL {
+  if (!localProxyUrl.trim()) return urlObject;
+  try {
+    const proxy = new URL(localProxyUrl.trim());
+    const proxied = new URL(urlObject.toString());
+    proxied.protocol = proxy.protocol;
+    proxied.hostname = proxy.hostname;
+    proxied.port = proxy.port;
+    return proxied;
+  } catch {
+    return urlObject;
+  }
+}
+
 async function sendDirectRequest(
   urlObject: URL,
   method: string,
@@ -427,6 +441,7 @@ export default function RestClientPage() {
     timeout: 30000,
     sslVerification: true,
     useServerProxy: false,
+    localProxyUrl: '',
   });
   const [collectionSearch, setCollectionSearch] = useState('');
   const [showNewCollectionInput, setShowNewCollectionInput] = useState(false);
@@ -797,11 +812,15 @@ export default function RestClientPage() {
 
         let data: RequestResponse;
         const useProxy = settingsDraft.useServerProxy && !isLocalUrl(urlObject);
+        // Apply local proxy: swap the origin of the target URL (keeps path+query)
+        const effectiveUrl = settingsDraft.localProxyUrl
+          ? applyLocalProxy(urlObject, settingsDraft.localProxyUrl)
+          : urlObject;
         if (!useProxy) {
           // Direct browser fetch — respects system/company proxy and works for localhost
           try {
             data = await sendDirectRequest(
-              urlObject,
+              effectiveUrl,
               activeTab.method,
               headers,
               requestBody,
@@ -2134,6 +2153,38 @@ export default function RestClientPage() {
                     </span>
                   </span>
                 </label>
+                <div className="flex flex-col gap-1.5 rounded border border-gray-200 dark:border-[#222222] bg-gray-50 dark:bg-[#171717] px-3 py-3">
+                  <span className="text-sm text-gray-700 dark:text-slate-300">
+                    Local Proxy URL
+                    <span className="mt-0.5 block text-[11px] text-gray-400 dark:text-slate-500">
+                      Rewrites the origin of each request to route through a local CORS proxy.
+                    </span>
+                  </span>
+                  <input
+                    type="text"
+                    value={settingsDraft.localProxyUrl ?? ''}
+                    onChange={(event) =>
+                      setSettingsDraft((current) => ({
+                        ...current,
+                        localProxyUrl: event.target.value,
+                      }))
+                    }
+                    placeholder="http://localhost:8010"
+                    className="w-full rounded border border-gray-300 dark:border-[#333] bg-white dark:bg-[#141414] px-2.5 py-1.5 text-xs text-gray-800 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-[#5b5bff]"
+                  />
+                  <div className="mt-1 rounded border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5 text-[11px] text-blue-700 dark:text-blue-400">
+                    <p className="mb-1.5 font-semibold">Start a local CORS proxy:</p>
+                    <code className="block select-all rounded bg-blue-100 dark:bg-blue-900/40 px-2 py-1.5 font-mono text-[10px] text-blue-800 dark:text-blue-300 leading-relaxed">
+                      npx local-cors-proxy \<br />
+                      {'  '}--proxyUrl http://localhost:8383 \<br />
+                      {'  '}--port 8010
+                    </code>
+                    <p className="mt-1.5 text-blue-600 dark:text-blue-500">
+                      Then set the URL above to <span className="font-mono">http://localhost:8010</span>. Requests will
+                      be forwarded through the proxy with CORS headers added.
+                    </p>
+                  </div>
+                </div>
                 <Button
                   type="button"
                   onClick={() => {

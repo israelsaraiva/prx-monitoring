@@ -73,6 +73,7 @@ export interface Settings {
   timeout: number;
   sslVerification: boolean;
   useServerProxy: boolean;
+  localProxyUrl: string;
 }
 
 const COLLECTIONS_KEY = 'rest-client:collections';
@@ -80,7 +81,7 @@ const ENVIRONMENTS_KEY = 'rest-client:environments';
 const ACTIVE_ENVIRONMENT_ID_KEY = 'rest-client:active-environment-id';
 const HISTORY_KEY = 'rest-client:history';
 const SETTINGS_KEY = 'rest-client:settings';
-const DEFAULT_SETTINGS: Settings = { timeout: 30000, sslVerification: true, useServerProxy: false };
+const DEFAULT_SETTINGS: Settings = { timeout: 30000, sslVerification: true, useServerProxy: false, localProxyUrl: '' };
 
 function readStorage<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') {
@@ -183,6 +184,8 @@ export function getSettings(): Settings {
       typeof settings?.sslVerification === 'boolean' ? settings.sslVerification : DEFAULT_SETTINGS.sslVerification,
     useServerProxy:
       typeof settings?.useServerProxy === 'boolean' ? settings.useServerProxy : DEFAULT_SETTINGS.useServerProxy,
+    localProxyUrl:
+      typeof settings?.localProxyUrl === 'string' ? settings.localProxyUrl : DEFAULT_SETTINGS.localProxyUrl,
   };
 }
 
@@ -193,6 +196,7 @@ export function saveSettings(settings: Settings) {
       typeof settings.sslVerification === 'boolean' ? settings.sslVerification : DEFAULT_SETTINGS.sslVerification,
     useServerProxy:
       typeof settings.useServerProxy === 'boolean' ? settings.useServerProxy : DEFAULT_SETTINGS.useServerProxy,
+    localProxyUrl: typeof settings.localProxyUrl === 'string' ? settings.localProxyUrl : DEFAULT_SETTINGS.localProxyUrl,
   });
 }
 
