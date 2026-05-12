@@ -17,6 +17,7 @@ import {
   Package,
   Pencil,
   Plus,
+  Save,
   Search,
   Send,
   Settings,
@@ -85,6 +86,8 @@ type RequestTab = {
   auth: AuthConfig;
   response: RequestResponse | null;
   loading: boolean;
+  savedRequestId?: string;
+  savedCollectionId?: string;
 };
 
 type SaveDialogState = {
@@ -632,12 +635,40 @@ export default function RestClientPage() {
     (savedRequest: SavedRequest) => {
       applyTabRequest({
         ...savedRequest,
+        savedRequestId: savedRequest.id,
+        savedCollectionId: savedRequest.collectionId,
         response: null,
       });
       toast('Request loaded');
     },
     [applyTabRequest]
   );
+
+  const saveRequestChanges = useCallback(() => {
+    if (!activeTab?.savedRequestId || !activeTab?.savedCollectionId) return;
+    const { savedRequestId, savedCollectionId } = activeTab;
+    const updatedCollections = collections.map((collection) => {
+      if (collection.id !== savedCollectionId) return collection;
+      return {
+        ...collection,
+        requests: collection.requests.map((req) => {
+          if (req.id !== savedRequestId) return req;
+          return {
+            ...req,
+            method: activeTab.method,
+            url: activeTab.url,
+            headers: activeTab.headers.map((h) => ({ ...h })),
+            params: activeTab.params.map((p) => ({ ...p })),
+            body: activeTab.body,
+            bodyType: activeTab.bodyType,
+            auth: JSON.parse(JSON.stringify(activeTab.auth)) as AuthConfig,
+          };
+        }),
+      };
+    });
+    syncCollections(updatedCollections);
+    toast('Changes saved');
+  }, [activeTab, collections, syncCollections]);
 
   const loadHistoryEntry = useCallback(
     (entry: HistoryEntry) => {
@@ -778,9 +809,15 @@ export default function RestClientPage() {
             );
           } catch (directError: any) {
             const isTimeout = directError?.name === 'AbortError';
+            const isFetchFailed =
+              !isTimeout && (directError?.message === 'Failed to fetch' || directError?.message?.includes('fetch'));
             data = {
-              error: isTimeout ? 'Request timed out' : (directError?.message ?? 'Failed to execute request'),
-              errorCode: isTimeout ? 'TIMEOUT' : 'CLIENT_ERROR',
+              error: isTimeout
+                ? 'Request timed out'
+                : isFetchFailed
+                  ? 'Failed to fetch — this is likely a CORS error. The browser blocked the request because the target server does not allow cross-origin requests from this origin.'
+                  : (directError?.message ?? 'Failed to execute request'),
+              errorCode: isTimeout ? 'TIMEOUT' : isFetchFailed ? 'CORS_OR_NETWORK' : 'CLIENT_ERROR',
               time: 0,
             };
           }
@@ -2230,6 +2267,17 @@ export default function RestClientPage() {
                 >
                   <Package className="h-3.5 w-3.5" />
                 </button>
+                {activeTab?.savedRequestId && (
+                  <button
+                    type="button"
+                    onClick={saveRequestChanges}
+                    title="Save changes to collection"
+                    className="flex h-full items-center gap-1.5 border-l border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] px-3 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 transition-colors hover:bg-gray-100 dark:hover:bg-[#252525]"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Save</span>
+                  </button>
+                )}
                 <div ref={sendMenuRef} className="relative flex h-full shrink-0">
                   <Button
                     type="button"
@@ -2647,11 +2695,32 @@ export default function RestClientPage() {
                             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                             <div className="min-w-0 flex-1 space-y-1">
                               <h3 className="text-xs font-bold">
-                                {activeTab.response.errorCode === 'TIMEOUT' ? 'Request Timed Out' : 'Network Error'}
+                                {activeTab.response.errorCode === 'TIMEOUT'
+                                  ? 'Request Timed Out'
+                                  : activeTab.response.errorCode === 'CORS_OR_NETWORK'
+                                    ? 'CORS / Network Error'
+                                    : 'Network Error'}
                               </h3>
                               <p className="break-all font-mono text-[11px] opacity-90">{activeTab.response.error}</p>
                               {activeTab.response.errorCode && activeTab.response.errorCode !== 'TIMEOUT' && (
                                 <p className="font-mono text-[10px] opacity-60">Code: {activeTab.response.errorCode}</p>
+                              )}
+                              {activeTab.response.errorCode === 'CORS_OR_NETWORK' && (
+                                <div className="mt-2 space-y-1 text-[11px] text-yellow-600 dark:text-yellow-400">
+                                  <p className="font-semibold">To fix this, choose one of:</p>
+                                  <p>
+                                    • <strong>Run the app locally</strong> — the server proxy will run on your machine
+                                    behind your company proxy.
+                                  </p>
+                                  <p>
+                                    • <strong>Enable &quot;Use Server Proxy&quot;</strong> in Settings — only works if
+                                    the server can reach the target URL directly.
+                                  </p>
+                                  <p>
+                                    • Ask the target server to add{' '}
+                                    <code className="opacity-80">Access-Control-Allow-Origin</code> headers.
+                                  </p>
+                                </div>
                               )}
                               {/cert|ssl|tls|certificate/i.test(activeTab.response.error) && (
                                 <p className="mt-2 text-[11px] text-yellow-600 dark:text-yellow-400 opacity-80">
