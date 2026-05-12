@@ -460,6 +460,7 @@ export default function RestClientPage() {
   const [curlImportValue, setCurlImportValue] = useState('');
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandSearch, setCommandSearch] = useState('');
+  const [proxyCopied, setProxyCopied] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [saveDialog, setSaveDialog] = useState<SaveDialogState>({
@@ -2173,7 +2174,24 @@ export default function RestClientPage() {
                     className="w-full rounded border border-gray-300 dark:border-[#333] bg-white dark:bg-[#141414] px-2.5 py-1.5 text-xs text-gray-800 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-[#5b5bff]"
                   />
                   <div className="mt-1 rounded border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5 text-[11px] text-blue-700 dark:text-blue-400">
-                    <p className="mb-1.5 font-semibold">Start a local CORS proxy:</p>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <p className="font-semibold">Start a local CORS proxy:</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            'npx local-cors-proxy --proxyUrl http://localhost:8383 --port 8010'
+                          );
+                          setProxyCopied(true);
+                          setTimeout(() => setProxyCopied(false), 2000);
+                        }}
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                        title="Copy command"
+                      >
+                        <Copy className="h-3 w-3" />
+                        {proxyCopied ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
                     <code className="block select-all rounded bg-blue-100 dark:bg-blue-900/40 px-2 py-1.5 font-mono text-[10px] text-blue-800 dark:text-blue-300 leading-relaxed">
                       npx local-cors-proxy \<br />
                       {'  '}--proxyUrl http://localhost:8383 \<br />
@@ -2950,53 +2968,55 @@ export default function RestClientPage() {
       </Dialog>
 
       <Dialog open={codeSnippetOpen} onOpenChange={setCodeSnippetOpen}>
-        <DialogContent className="border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#171717] text-gray-700 dark:text-slate-300 sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#171717] text-gray-700 dark:text-slate-300 sm:max-w-4xl overflow-hidden flex flex-col max-h-[85vh]">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="text-sm text-gray-900 dark:text-slate-100">Code Snippet</DialogTitle>
             <DialogDescription className="text-xs text-gray-400 dark:text-slate-500">
               Copy the request as code in your preferred language
             </DialogDescription>
           </DialogHeader>
-          <div className="flex gap-1 flex-wrap">
-            {(['curl', 'http', 'fetch', 'axios', 'python', 'go'] as const).map((lang) => (
-              <button
-                key={lang}
-                type="button"
-                onClick={() => setCodeSnippetLang(lang)}
-                className={`rounded px-3 py-1 text-[11px] font-medium transition-colors ${
-                  codeSnippetLang === lang
-                    ? 'bg-[#5b5bff] text-white'
-                    : 'bg-gray-200 dark:bg-[#222] text-gray-600 dark:text-slate-400 hover:bg-gray-300 dark:hover:bg-[#2a2a2a]'
-                }`}
-              >
-                {lang === 'curl'
-                  ? 'cURL'
-                  : lang === 'http'
-                    ? 'HTTP'
-                    : lang === 'fetch'
-                      ? 'JS Fetch'
-                      : lang === 'axios'
-                        ? 'Axios'
-                        : lang === 'python'
-                          ? 'Python'
-                          : 'Go'}
-              </button>
-            ))}
-          </div>
-          <div className="relative">
-            <pre className="max-h-96 overflow-auto rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#0d0d0d] p-4 font-mono text-[11px] leading-relaxed text-gray-800 dark:text-slate-200 whitespace-pre-wrap break-words">
-              {generateCodeSnippet(codeSnippetLang)}
-            </pre>
+          <div className="flex items-center justify-between gap-2 shrink-0">
+            <div className="flex gap-1 flex-wrap">
+              {(['curl', 'http', 'fetch', 'axios', 'python', 'go'] as const).map((lang) => (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => setCodeSnippetLang(lang)}
+                  className={`rounded px-3 py-1 text-[11px] font-medium transition-colors ${
+                    codeSnippetLang === lang
+                      ? 'bg-[#5b5bff] text-white'
+                      : 'bg-gray-200 dark:bg-[#222] text-gray-600 dark:text-slate-400 hover:bg-gray-300 dark:hover:bg-[#2a2a2a]'
+                  }`}
+                >
+                  {lang === 'curl'
+                    ? 'cURL'
+                    : lang === 'http'
+                      ? 'HTTP'
+                      : lang === 'fetch'
+                        ? 'JS Fetch'
+                        : lang === 'axios'
+                          ? 'Axios'
+                          : lang === 'python'
+                            ? 'Python'
+                            : 'Go'}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               onClick={() => {
                 void navigator.clipboard.writeText(generateCodeSnippet(codeSnippetLang));
                 toast('Copied to clipboard');
               }}
-              className="absolute right-3 top-3 flex items-center gap-1 rounded bg-gray-200 dark:bg-[#222] px-2 py-1 text-[10px] text-gray-600 dark:text-slate-400 transition-colors hover:bg-gray-300 dark:hover:bg-[#333]"
+              className="flex shrink-0 items-center gap-1.5 rounded bg-[#5b5bff] hover:bg-[#4b4be6] px-3 py-1.5 text-[11px] font-medium text-white transition-colors"
             >
-              <Copy className="h-3 w-3" /> Copy
+              <Copy className="h-3.5 w-3.5" /> Copy
             </button>
+          </div>
+          <div className="relative min-w-0 flex-1 overflow-hidden">
+            <pre className="h-full overflow-auto rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#0d0d0d] p-4 font-mono text-[11px] leading-relaxed text-gray-800 dark:text-slate-200 whitespace-pre-wrap break-all">
+              {generateCodeSnippet(codeSnippetLang)}
+            </pre>
           </div>
         </DialogContent>
       </Dialog>
