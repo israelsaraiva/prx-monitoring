@@ -1710,7 +1710,7 @@ export default function RestClientPage() {
         </div>
 
         {sidePanel && (
-          <div className="hidden w-64 shrink-0 flex-col border-r border-gray-200 dark:border-[#222222] bg-white dark:bg-[#141414] md:flex">
+          <div className="hidden w-80 shrink-0 flex-col border-r border-gray-200 dark:border-[#222222] bg-white dark:bg-[#141414] md:flex">
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-gray-200 dark:border-[#222222] px-4">
               <div className="flex items-center text-xs font-medium text-gray-500 dark:text-slate-400">
                 Workspace <span className="mx-2 opacity-50">&gt;</span>
