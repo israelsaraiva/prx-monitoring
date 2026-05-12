@@ -157,15 +157,15 @@ export default function Home() {
           {/* cURL Converter */}
           <Link
             href="/curl-converter"
-            className="group relative overflow-hidden rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl hover:shadow-2xl hover:shadow-orange-500/10 hover:border-orange-500/30 transition-all duration-500 flex flex-col hover:-translate-y-1"
+            className="group relative overflow-hidden rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl hover:shadow-2xl hover:shadow-emerald-500/10 hover:border-emerald-500/30 transition-all duration-500 flex flex-col hover:-translate-y-1"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-orange-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <div className="p-6 md:p-8 flex-1 flex flex-col relative z-10">
-              <div className="h-14 w-14 rounded-2xl bg-orange-100/80 dark:bg-orange-500/10 flex items-center justify-center text-orange-600 dark:text-orange-400 mb-6 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-500 ring-1 ring-inset ring-orange-500/20">
+              <div className="h-14 w-14 rounded-2xl bg-emerald-100/80 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-6 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-500 ring-1 ring-inset ring-emerald-500/20">
                 <Code className="h-7 w-7" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                 cURL Converter
               </h3>
               <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 leading-relaxed flex-1">
@@ -174,13 +174,44 @@ export default function Home() {
               <div className="space-y-3 mb-8">
                 {['Quick code parsing', 'Generates .http format', '1-click copy support'].map((item) => (
                   <div key={item} className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400">
+                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500/50 mr-3"></div>
+                    {item}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-auto pt-4 flex items-center text-sm font-bold text-emerald-600 dark:text-emerald-400 border-t border-slate-200/50 dark:border-slate-800/50 group-hover:border-emerald-500/20 transition-colors">
+                Open Converter <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1.5 transition-transform" />
+              </div>
+            </div>
+          </Link>
+
+          {/* Markdown Viewer */}
+          <Link
+            href="/markdown-viewer"
+            className="group relative overflow-hidden rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl hover:shadow-2xl hover:shadow-orange-500/10 hover:border-orange-500/30 transition-all duration-500 flex flex-col hover:-translate-y-1"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-orange-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="p-6 md:p-8 flex-1 flex flex-col relative z-10">
+              <div className="h-14 w-14 rounded-2xl bg-orange-100/80 dark:bg-orange-500/10 flex items-center justify-center text-orange-600 dark:text-orange-400 mb-6 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-500 ring-1 ring-inset ring-orange-500/20">
+                <FileText className="h-7 w-7" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
+                Markdown Viewer
+              </h3>
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 leading-relaxed flex-1">
+                Draft and preview your markdown documents with real-time rendering.
+              </p>
+              <div className="space-y-3 mb-8">
+                {['Live preview', 'GFM support', 'Responsive design'].map((item) => (
+                  <div key={item} className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400">
                     <div className="h-1.5 w-1.5 rounded-full bg-orange-500/50 mr-3"></div>
                     {item}
                   </div>
                 ))}
               </div>
               <div className="mt-auto pt-4 flex items-center text-sm font-bold text-orange-600 dark:text-orange-400 border-t border-slate-200/50 dark:border-slate-800/50 group-hover:border-orange-500/20 transition-colors">
-                Open Converter <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1.5 transition-transform" />
+                Open Editor <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1.5 transition-transform" />
               </div>
             </div>
           </Link>

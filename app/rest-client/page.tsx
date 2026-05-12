@@ -9,6 +9,7 @@ import {
   Clock,
   Code,
   Copy,
+  Download,
   Folder,
   Globe,
   HardDrive,
@@ -337,6 +338,10 @@ export default function RestClientPage() {
   const [renamingRequestId, setRenamingRequestId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
+  const [codeSnippetOpen, setCodeSnippetOpen] = useState(false);
+  const [codeSnippetLang, setCodeSnippetLang] = useState<'curl' | 'http' | 'fetch' | 'axios' | 'python' | 'go'>('curl');
+  const [curlImportOpen, setCurlImportOpen] = useState(false);
+  const [curlImportValue, setCurlImportValue] = useState('');
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandSearch, setCommandSearch] = useState('');
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -902,6 +907,256 @@ export default function RestClientPage() {
     [collections, syncCollections]
   );
 
+  const exportCollection = useCallback((collection: Collection) => {
+    const postman = {
+      info: {
+        name: collection.name,
+        _postman_id: collection.id,
+        schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+      },
+      item: collection.requests.map((r) => ({
+        name: r.name,
+        request: {
+          method: r.method,
+          header: r.headers.filter((h) => h.key).map((h) => ({ key: h.key, value: h.value })),
+          url: { raw: r.url },
+          body: r.body ? { mode: 'raw', raw: r.body } : undefined,
+        },
+      })),
+    };
+    const blob = new Blob([JSON.stringify(postman, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${collection.name.replace(/[^a-z0-9]/gi, '_')}.postman_collection.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const exportAllCollections = useCallback(() => {
+    const data = { collections };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'rest-client-collections.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [collections]);
+
+  const generateCodeSnippet = useCallback(
+    (lang: 'curl' | 'http' | 'fetch' | 'axios' | 'python' | 'go') => {
+      if (!activeTab) return '';
+      const { method, url, headers, body, bodyType, auth } = activeTab;
+      const allHeaders = headers.filter((h) => h.key && h.active !== false);
+
+      // Merge auth into headers for snippet generation
+      const authHeader: { key: string; value: string } | null = (() => {
+        if (auth.type === 'bearer') return { key: 'Authorization', value: `Bearer ${auth.token}` };
+        if (auth.type === 'basic')
+          return { key: 'Authorization', value: `Basic ${btoa(`${auth.username}:${auth.password}`)}` };
+        if (auth.type === 'apikey' && auth.addTo === 'header') return { key: auth.key, value: auth.value };
+        return null;
+      })();
+      const allH = authHeader ? [...allHeaders, authHeader] : allHeaders;
+      const hasBody = !['GET', 'HEAD'].includes(method.toUpperCase()) && bodyType !== 'none' && body;
+      if (hasBody && bodyType === 'json' && !allH.some((h) => h.key.toLowerCase() === 'content-type')) {
+        allH.push({ key: 'Content-Type', value: 'application/json' });
+      }
+
+      const headerLines = (indent: string, fmt: (k: string, v: string) => string, sep = '\n') =>
+        allH.map((h) => `${indent}${fmt(h.key, h.value)}`).join(sep);
+
+      if (lang === 'curl') {
+        const parts = [`curl -X ${method.toUpperCase()} '${url}'`];
+        allH.forEach((h) => parts.push(`  -H '${h.key}: ${h.value}'`));
+        if (hasBody) parts.push(`  -d '${body.replace(/'/g, "\\'")}'`);
+        return parts.join(' \\\n');
+      }
+
+      if (lang === 'http') {
+        const u = (() => {
+          try {
+            const p = new URL(url);
+            return `${p.pathname}${p.search}`;
+          } catch {
+            return url;
+          }
+        })();
+        const host = (() => {
+          try {
+            return new URL(url).host;
+          } catch {
+            return '';
+          }
+        })();
+        const headersStr = headerLines('', (k, v) => `${k}: ${v}`);
+        const hostLine = host && !allH.some((h) => h.key.toLowerCase() === 'host') ? `Host: ${host}\n` : '';
+        return `${method.toUpperCase()} ${u} HTTP/1.1\n${hostLine}${headersStr}${hasBody ? `\n\n${body}` : ''}`;
+      }
+
+      if (lang === 'fetch') {
+        const headerObj = allH.length ? `{\n${headerLines('      ', (k, v) => `'${k}': '${v}'`, ',\n')}\n    }` : '{}';
+        return `const response = await fetch('${url}', {\n  method: '${method.toUpperCase()}',\n  headers: ${headerObj},${hasBody ? `\n  body: \`${body}\`,` : ''}\n});\nconst data = await response.json();\nconsole.log(data);`;
+      }
+
+      if (lang === 'axios') {
+        const headerObj = allH.length ? `{\n${headerLines('    ', (k, v) => `'${k}': '${v}'`, ',\n')}\n  }` : '{}';
+        return `import axios from 'axios';\n\nconst response = await axios({\n  method: '${method.toLowerCase()}',\n  url: '${url}',\n  headers: ${headerObj},${hasBody ? `\n  data: \`${body}\`,` : ''}\n});\nconsole.log(response.data);`;
+      }
+
+      if (lang === 'python') {
+        const headerDict = allH.length ? `{\n${headerLines('    ', (k, v) => `"${k}": "${v}"`, ',\n')}\n}` : '{}';
+        return `import requests\n\nheaders = ${headerDict}\n\nresponse = requests.${method.toLowerCase()}(\n    "${url}",\n    headers=headers,${hasBody ? `\n    data="""${body}""",` : ''}\n)\nprint(response.json())`;
+      }
+
+      if (lang === 'go') {
+        const headerLines2 = allH.map((h) => `\treq.Header.Set("${h.key}", "${h.value}")`).join('\n');
+        const bodyPart = hasBody ? `\tbody := strings.NewReader(\`${body}\`)\n\t` : '\t';
+        return `package main\n\nimport (\n\t"fmt"\n\t"net/http"${hasBody ? '\n\t"strings"' : ''}\n)\n\nfunc main() {\n\t${hasBody ? `body := strings.NewReader(\`${body}\`)\n\treq, _ := http.NewRequest("${method.toUpperCase()}", "${url}", body)` : `req, _ := http.NewRequest("${method.toUpperCase()}", "${url}", nil)`}\n${headerLines2 ? headerLines2 + '\n' : ''}\n\tclient := &http.Client{}\n\tresp, _ := client.Do(req)\n\tdefer resp.Body.Close()\n\tfmt.Println(resp.Status)\n}`;
+      }
+
+      return '';
+    },
+    [activeTab]
+  );
+
+  const parseCurlIntoTab = useCallback(() => {
+    const raw = curlImportValue.trim();
+    if (!raw) return;
+    try {
+      // Tokenize respecting single/double quotes and backslash-newline continuations
+      const normalized = raw.replace(/\\\n/g, ' ');
+      const tokens: string[] = [];
+      let current = '';
+      let i = 0;
+      while (i < normalized.length) {
+        const ch = normalized[i];
+        if (ch === "'" || ch === '"') {
+          const quote = ch;
+          i++;
+          while (i < normalized.length && normalized[i] !== quote) {
+            if (normalized[i] === '\\' && quote === '"') {
+              i++;
+              current += normalized[i] ?? '';
+            } else current += normalized[i];
+            i++;
+          }
+          i++; // closing quote
+        } else if (ch === ' ' || ch === '\t') {
+          if (current) {
+            tokens.push(current);
+            current = '';
+          }
+          i++;
+        } else {
+          current += ch;
+          i++;
+        }
+      }
+      if (current) tokens.push(current);
+
+      if (tokens[0]?.toLowerCase() !== 'curl') {
+        toast('Input does not look like a cURL command');
+        return;
+      }
+
+      let method = 'GET';
+      let url = '';
+      const headers: { key: string; value: string }[] = [];
+      let body = '';
+      let basicAuth: { username: string; password: string } | null = null;
+
+      let idx = 1;
+      while (idx < tokens.length) {
+        const token = tokens[idx];
+        if (token === '-X' || token === '--request') {
+          method = tokens[++idx] ?? 'GET';
+        } else if (token === '-H' || token === '--header') {
+          const raw = tokens[++idx] ?? '';
+          const colon = raw.indexOf(':');
+          if (colon !== -1) headers.push({ key: raw.slice(0, colon).trim(), value: raw.slice(colon + 1).trim() });
+        } else if (token === '-d' || token === '--data' || token === '--data-raw' || token === '--data-binary') {
+          body = tokens[++idx] ?? '';
+          if (method === 'GET') method = 'POST';
+        } else if (token === '-u' || token === '--user') {
+          const raw = tokens[++idx] ?? '';
+          const colon = raw.indexOf(':');
+          basicAuth =
+            colon !== -1
+              ? { username: raw.slice(0, colon), password: raw.slice(colon + 1) }
+              : { username: raw, password: '' };
+        } else if (!token.startsWith('-')) {
+          url = token;
+        }
+        idx++;
+      }
+
+      if (!url) {
+        toast('No URL found in cURL command');
+        return;
+      }
+
+      // Build KeyValue arrays
+      const kvHeaders: KeyValue[] = headers.map((h) => ({
+        key: h.key,
+        value: h.value,
+        active: true,
+        id: Date.now() + Math.floor(Math.random() * 10000),
+      }));
+      if (kvHeaders.length === 0) kvHeaders.push(createKeyValue());
+
+      // Detect body type from Content-Type header
+      const contentType = headers.find((h) => h.key.toLowerCase() === 'content-type')?.value ?? '';
+      let bodyType: BodyType = 'none';
+      if (body) {
+        if (contentType.includes('application/json')) bodyType = 'json';
+        else if (contentType.includes('application/x-www-form-urlencoded')) bodyType = 'urlencoded';
+        else bodyType = 'text';
+      }
+
+      // Determine auth
+      const authHeaderIdx = headers.findIndex((h) => h.key.toLowerCase() === 'authorization');
+      let auth: AuthConfig = { type: 'none' };
+      if (authHeaderIdx !== -1) {
+        const val = headers[authHeaderIdx].value;
+        if (val.toLowerCase().startsWith('bearer ')) {
+          auth = { type: 'bearer', token: val.slice(7) };
+          kvHeaders.splice(
+            kvHeaders.findIndex((h) => h.key.toLowerCase() === 'authorization'),
+            1
+          );
+          if (kvHeaders.length === 0) kvHeaders.push(createKeyValue());
+        } else if (val.toLowerCase().startsWith('basic ')) {
+          try {
+            const decoded = atob(val.slice(6));
+            const c = decoded.indexOf(':');
+            auth = { type: 'basic', username: decoded.slice(0, c), password: decoded.slice(c + 1) };
+          } catch {
+            /* keep raw header */
+          }
+        }
+      } else if (basicAuth) {
+        auth = { type: 'basic', ...basicAuth };
+      }
+
+      updateTab(activeTabId, (tab) => ({
+        ...tab,
+        method: method.toUpperCase(),
+        url,
+        headers: kvHeaders,
+        body,
+        bodyType,
+        auth,
+      }));
+      setCurlImportOpen(false);
+      setCurlImportValue('');
+      toast('Request imported from cURL');
+    } catch {
+      toast('Failed to parse cURL command');
+    }
+  }, [curlImportValue, activeTabId, updateTab]);
+
   const addEnvironment = useCallback(() => {
     const environment: Environment = {
       id: createId(),
@@ -1135,7 +1390,7 @@ export default function RestClientPage() {
           <div className="hidden w-64 shrink-0 flex-col border-r border-gray-200 dark:border-[#222222] bg-white dark:bg-[#141414] md:flex">
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-gray-200 dark:border-[#222222] px-4">
               <div className="flex items-center text-xs font-medium text-gray-500 dark:text-slate-400">
-                Personal Workspace <span className="mx-2 opacity-50">&gt;</span>
+                Workspace <span className="mx-2 opacity-50">&gt;</span>
                 <span className="text-gray-800 dark:text-slate-200 capitalize">{sidePanel}</span>
               </div>
             </div>
@@ -1203,7 +1458,7 @@ export default function RestClientPage() {
                                 [collection.id]: !current[collection.id],
                               }))
                             }
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 dark:text-slate-300"
+                            className="group/col flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 dark:text-slate-300"
                           >
                             <ChevronDown
                               className={`h-3.5 w-3.5 transition-transform ${
@@ -1214,6 +1469,17 @@ export default function RestClientPage() {
                             <span className="ml-auto text-[10px] text-gray-400 dark:text-slate-500">
                               {collection.requests.length}
                             </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                exportCollection(collection);
+                              }}
+                              className="ml-1 p-0.5 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-[#5b5bff] group-hover/col:opacity-100"
+                              title="Export collection"
+                            >
+                              <Download className="h-3 w-3" />
+                            </button>
                           </button>
                           {expandedCollections[collection.id] && (
                             <div className="border-t border-gray-200 dark:border-[#222222] bg-white dark:bg-[#141414]">
@@ -1302,13 +1568,23 @@ export default function RestClientPage() {
                     className="hidden"
                     onChange={importPostmanCollection}
                   />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex h-8 w-full items-center justify-center rounded bg-[#5b5bff] text-xs font-medium text-white transition-colors hover:bg-[#4b4be6]"
-                  >
-                    Import
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded bg-[#5b5bff] text-xs font-medium text-white transition-colors hover:bg-[#4b4be6]"
+                    >
+                      Import
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportAllCollections}
+                      disabled={collections.length === 0}
+                      className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded border border-gray-300 dark:border-[#333] bg-gray-100 dark:bg-[#202020] text-xs font-medium text-gray-700 dark:text-slate-300 transition-colors hover:bg-gray-200 dark:hover:bg-[#2a2a2a] disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Download className="h-3 w-3" /> Export all
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -1647,6 +1923,22 @@ export default function RestClientPage() {
                   placeholder="https://echo.hoppscotch.io"
                   className="h-full w-full flex-1 bg-white dark:bg-[#1e1e1e] px-4 font-mono text-[13px] text-gray-800 dark:text-slate-200 outline-none transition-colors placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-[#222]"
                 />
+                <button
+                  type="button"
+                  onClick={() => setCodeSnippetOpen(true)}
+                  title="Generate code snippet"
+                  className="flex h-full items-center gap-1.5 border-l border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] px-3 text-[11px] font-medium text-gray-500 dark:text-slate-400 transition-colors hover:bg-gray-100 dark:hover:bg-[#252525] hover:text-[#5b5bff]"
+                >
+                  <Code className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurlImportOpen(true)}
+                  title="Import from cURL"
+                  className="flex h-full items-center gap-1.5 border-l border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] px-3 text-[11px] font-medium text-gray-500 dark:text-slate-400 transition-colors hover:bg-gray-100 dark:hover:bg-[#252525] hover:text-[#5b5bff]"
+                >
+                  <Package className="h-3.5 w-3.5" />
+                </button>
                 <div ref={sendMenuRef} className="relative flex h-full shrink-0">
                   <Button
                     type="button"
@@ -2145,6 +2437,107 @@ export default function RestClientPage() {
                 )}
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={curlImportOpen}
+        onOpenChange={(open) => {
+          setCurlImportOpen(open);
+          if (!open) setCurlImportValue('');
+        }}
+      >
+        <DialogContent className="border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#171717] text-gray-700 dark:text-slate-300 sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-sm text-gray-900 dark:text-slate-100">Import from cURL</DialogTitle>
+            <DialogDescription className="text-xs text-gray-400 dark:text-slate-500">
+              Paste a cURL command to populate the current request tab
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            value={curlImportValue}
+            onChange={(e) => setCurlImportValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) parseCurlIntoTab();
+            }}
+            placeholder={
+              'curl -X POST https://api.example.com/data \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"key": "value"}\''
+            }
+            rows={8}
+            className="w-full rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#0d0d0d] p-3 font-mono text-[11px] leading-relaxed text-gray-800 dark:text-slate-200 outline-none resize-none placeholder:text-gray-400 dark:placeholder:text-slate-600 focus:border-[#5b5bff]"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCurlImportOpen(false);
+                setCurlImportValue('');
+              }}
+              className="rounded border border-gray-300 dark:border-[#333] px-4 py-1.5 text-xs text-gray-600 dark:text-slate-400 transition-colors hover:bg-gray-100 dark:hover:bg-[#222]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={parseCurlIntoTab}
+              disabled={!curlImportValue.trim()}
+              className="rounded bg-[#5b5bff] px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#4b4be6] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Import
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={codeSnippetOpen} onOpenChange={setCodeSnippetOpen}>
+        <DialogContent className="border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#171717] text-gray-700 dark:text-slate-300 sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-sm text-gray-900 dark:text-slate-100">Code Snippet</DialogTitle>
+            <DialogDescription className="text-xs text-gray-400 dark:text-slate-500">
+              Copy the request as code in your preferred language
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-1 flex-wrap">
+            {(['curl', 'http', 'fetch', 'axios', 'python', 'go'] as const).map((lang) => (
+              <button
+                key={lang}
+                type="button"
+                onClick={() => setCodeSnippetLang(lang)}
+                className={`rounded px-3 py-1 text-[11px] font-medium transition-colors ${
+                  codeSnippetLang === lang
+                    ? 'bg-[#5b5bff] text-white'
+                    : 'bg-gray-200 dark:bg-[#222] text-gray-600 dark:text-slate-400 hover:bg-gray-300 dark:hover:bg-[#2a2a2a]'
+                }`}
+              >
+                {lang === 'curl'
+                  ? 'cURL'
+                  : lang === 'http'
+                    ? 'HTTP'
+                    : lang === 'fetch'
+                      ? 'JS Fetch'
+                      : lang === 'axios'
+                        ? 'Axios'
+                        : lang === 'python'
+                          ? 'Python'
+                          : 'Go'}
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <pre className="max-h-96 overflow-auto rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#0d0d0d] p-4 font-mono text-[11px] leading-relaxed text-gray-800 dark:text-slate-200 whitespace-pre-wrap break-words">
+              {generateCodeSnippet(codeSnippetLang)}
+            </pre>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(generateCodeSnippet(codeSnippetLang));
+                toast('Copied to clipboard');
+              }}
+              className="absolute right-3 top-3 flex items-center gap-1 rounded bg-gray-200 dark:bg-[#222] px-2 py-1 text-[10px] text-gray-600 dark:text-slate-400 transition-colors hover:bg-gray-300 dark:hover:bg-[#333]"
+            >
+              <Copy className="h-3 w-3" /> Copy
+            </button>
           </div>
         </DialogContent>
       </Dialog>
