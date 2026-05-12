@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
   try {
     const { url, method, headers, body, timeout, sslVerification } = await req.json();
 
     if (!url) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+      return NextResponse.json({ error: 'URL is required', time: 0 }, { status: 400 });
     }
 
     const requestHeaders = { ...(headers || {}) } as Record<string, string>;
@@ -48,7 +49,6 @@ export async function POST(req: NextRequest) {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
     }
 
-    const startTime = Date.now();
     let response: Response;
     try {
       response = await fetch(url, fetchOptions);
@@ -86,10 +86,15 @@ export async function POST(req: NextRequest) {
       size: responseText.length,
     });
   } catch (error: any) {
+    const time = Date.now() - startTime;
     const isTimeout = error?.name === 'AbortError';
-    return NextResponse.json(
-      { error: isTimeout ? 'Request timed out' : error.message || 'Failed to execute request' },
-      { status: 500 }
-    );
+    if (isTimeout) {
+      return NextResponse.json({ error: 'Request timed out', errorCode: 'TIMEOUT', time }, { status: 500 });
+    }
+    const cause = error?.cause;
+    const causeMessage = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : null;
+    const causeCode: string | undefined = cause instanceof Error ? (cause as any).code : undefined;
+    const message = causeMessage ?? error?.message ?? 'Failed to execute request';
+    return NextResponse.json({ error: message, errorCode: causeCode, time }, { status: 500 });
   }
 }

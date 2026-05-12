@@ -73,7 +73,7 @@ const RAW_CONTENT_TYPES: Record<Exclude<BodyType, 'none' | 'form-data' | 'urlenc
 const EMPTY_AUTH: AuthConfig = { type: 'none' };
 
 type SidePanel = 'collections' | 'history' | 'environments' | 'settings' | null;
-type RequestResponse = HistoryEntry['response'] | { error: string };
+type RequestResponse = HistoryEntry['response'] | { error: string; errorCode?: string; time?: number };
 type RequestTab = {
   id: string;
   method: string;
@@ -694,7 +694,9 @@ export default function RestClientPage() {
         const data = (await response.json()) as RequestResponse;
 
         if ('error' in data) {
-          throw new Error(data.error);
+          // Preserve errorCode and time from the structured proxy error response
+          updateTab(tabId, (tab) => ({ ...tab, response: data, loading: false }));
+          return;
         }
 
         updateTab(tabId, (tab) => ({ ...tab, response: data, loading: false }));
@@ -731,7 +733,11 @@ export default function RestClientPage() {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to execute request';
-        updateTab(tabId, (tab) => ({ ...tab, response: { error: errorMessage }, loading: false }));
+        updateTab(tabId, (tab) => ({
+          ...tab,
+          response: { error: errorMessage, errorCode: 'CLIENT_ERROR' },
+          loading: false,
+        }));
       }
     },
     [activeEnvironment, activeTab, collections, history, syncHistory, updateTab]
@@ -2148,7 +2154,15 @@ export default function RestClientPage() {
               </div>
             </div>
 
-            <div className="flex flex-1 min-h-0 flex-col overflow-hidden border-t border-gray-200 dark:border-[#222222] xl:flex-row">
+            <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden border-t border-gray-200 dark:border-[#222222] xl:flex-row">
+              {activeTab?.loading && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white/60 dark:bg-[#111]/70 backdrop-blur-sm">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 dark:border-slate-700 border-t-[#5b5bff]" />
+                  <p className="text-xs font-medium text-gray-500 dark:text-slate-400 animate-pulse">
+                    Sending request…
+                  </p>
+                </div>
+              )}
               <div className="flex w-full shrink-0 flex-col border-b border-gray-200 dark:border-[#222222] xl:w-1/2 xl:shrink xl:border-b-0 xl:border-r">
                 <Tabs defaultValue="params" className="flex flex-1 min-h-0 flex-col">
                   <TabsList className="hide-scrollbar h-11 w-full shrink-0 justify-start overflow-x-auto rounded-none border-b border-gray-200 dark:border-[#222222] bg-gray-50 dark:bg-[#171717] px-1 py-0">
@@ -2407,7 +2421,7 @@ export default function RestClientPage() {
               </div>
 
               <div className="flex w-full flex-col bg-white dark:bg-[#141414] xl:w-1/2">
-                {!activeTab?.response && !activeTab?.loading ? (
+                {!activeTab?.response ? (
                   <div className="flex flex-1 flex-col items-center justify-center bg-gray-50 dark:bg-[#171717] p-8 text-center">
                     <div className="w-full max-w-[280px] select-none space-y-4 font-mono text-[11px] text-gray-400 dark:text-slate-500">
                       <div className="flex justify-between border-b border-gray-200 dark:border-[#222] pb-2 text-gray-500 dark:text-slate-400">
@@ -2427,11 +2441,6 @@ export default function RestClientPage() {
                         <span className="rounded bg-gray-200 dark:bg-[#222] px-1.5 py-0.5 text-[10px]">?</span>
                       </div>
                     </div>
-                  </div>
-                ) : activeTab.loading ? (
-                  <div className="flex flex-1 flex-col items-center justify-center bg-gray-50 dark:bg-[#171717] text-gray-400 dark:text-slate-500">
-                    <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-[#5b5bff]" />
-                    <p className="text-xs animate-pulse">Sending Request...</p>
                   </div>
                 ) : (
                   <Tabs defaultValue="response-body" className="flex flex-1 flex-col">
@@ -2478,6 +2487,20 @@ export default function RestClientPage() {
                             </div>
                           </>
                         )}
+                        {isErrorResponse(activeTab.response) && (
+                          <>
+                            <div className="flex items-center gap-1">
+                              <span className="text-gray-400 dark:text-slate-500">Status:</span>
+                              <span className="font-semibold text-[#ff5b5b]">ERR</span>
+                            </div>
+                            {activeTab.response.time != null && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-gray-400 dark:text-slate-500">Time:</span>
+                                <span className="text-gray-700 dark:text-slate-300">{activeTab.response.time} ms</span>
+                              </div>
+                            )}
+                          </>
+                        )}
                         {successfulResponse && (
                           <button
                             type="button"
@@ -2498,9 +2521,29 @@ export default function RestClientPage() {
                         {isErrorResponse(activeTab.response) ? (
                           <div className="m-4 flex items-start gap-3 rounded border border-[#ff5b5b]/30 bg-red-50 dark:bg-red-900/20 p-4 text-[#ff5b5b]">
                             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                            <div>
-                              <h3 className="mb-1 text-xs font-bold">Network Error</h3>
-                              <p className="font-mono text-[11px] opacity-80">{activeTab.response.error}</p>
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <h3 className="text-xs font-bold">
+                                {activeTab.response.errorCode === 'TIMEOUT' ? 'Request Timed Out' : 'Network Error'}
+                              </h3>
+                              <p className="break-all font-mono text-[11px] opacity-90">{activeTab.response.error}</p>
+                              {activeTab.response.errorCode && activeTab.response.errorCode !== 'TIMEOUT' && (
+                                <p className="font-mono text-[10px] opacity-60">Code: {activeTab.response.errorCode}</p>
+                              )}
+                              {/cert|ssl|tls|certificate/i.test(activeTab.response.error) && (
+                                <p className="mt-2 text-[11px] text-yellow-600 dark:text-yellow-400 opacity-80">
+                                  💡 SSL certificate issue detected — try disabling SSL Verification in Settings.
+                                </p>
+                              )}
+                              {/ECONNREFUSED/i.test(activeTab.response.errorCode ?? '') && (
+                                <p className="mt-2 text-[11px] text-yellow-600 dark:text-yellow-400 opacity-80">
+                                  💡 Connection refused — check that the server is running and the port is correct.
+                                </p>
+                              )}
+                              {/ENOTFOUND/i.test(activeTab.response.errorCode ?? '') && (
+                                <p className="mt-2 text-[11px] text-yellow-600 dark:text-yellow-400 opacity-80">
+                                  💡 Hostname not found — check the URL for typos.
+                                </p>
+                              )}
                             </div>
                           </div>
                         ) : (
@@ -2621,8 +2664,8 @@ export default function RestClientPage() {
           if (!open) setCurlImportValue('');
         }}
       >
-        <DialogContent className="border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#171717] text-gray-700 dark:text-slate-300 sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="flex flex-col border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#171717] text-gray-700 dark:text-slate-300 sm:max-w-3xl max-h-[85vh]">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="text-sm text-gray-900 dark:text-slate-100">Import from cURL</DialogTitle>
             <DialogDescription className="text-xs text-gray-400 dark:text-slate-500">
               Paste a cURL command (bash or Windows CMD) to populate the current request tab
@@ -2637,10 +2680,9 @@ export default function RestClientPage() {
             placeholder={
               'Bash:\ncurl -X POST https://api.example.com/data \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"key": "value"}\'\n\nWindows CMD:\ncurl -X POST https://api.example.com/data ^\n  -H "Content-Type: application/json" ^\n  -d "{\\"key\\": \\"value\\"}"'
             }
-            rows={8}
-            className="w-full rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#0d0d0d] p-3 font-mono text-[11px] leading-relaxed text-gray-800 dark:text-slate-200 outline-none resize-none placeholder:text-gray-400 dark:placeholder:text-slate-600 focus:border-[#5b5bff]"
+            className="min-h-[160px] flex-1 w-full rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#0d0d0d] p-3 font-mono text-[11px] leading-relaxed text-gray-800 dark:text-slate-200 outline-none resize-none placeholder:text-gray-400 dark:placeholder:text-slate-600 focus:border-[#5b5bff] overflow-y-auto"
           />
-          <div className="flex justify-end gap-2">
+          <div className="shrink-0 flex justify-end gap-2">
             <button
               type="button"
               onClick={() => {
