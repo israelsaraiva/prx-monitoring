@@ -252,59 +252,71 @@ function KeyValueEditor({
   setItems: (items: KeyValue[]) => void;
   addLabel: string;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevLengthRef = useRef(items.length);
+
+  useEffect(() => {
+    if (items.length > prevLengthRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+    prevLengthRef.current = items.length;
+  }, [items.length]);
+
   return (
-    <div className="flex w-full flex-col overflow-hidden rounded-sm border border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#181818]">
+    <div className="flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-sm border border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#181818]">
       <div className="flex items-center border-b border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">
         <div className="flex-1 border-r border-gray-300 dark:border-[#2a2a2a] px-4 py-2">Key</div>
         <div className="flex-1 border-r border-gray-300 dark:border-[#2a2a2a] px-4 py-2">Value</div>
         <div className="w-16 px-2 py-2 text-center">On</div>
       </div>
-      {items.map((item, index) => (
-        <div
-          key={item.id}
-          className="group flex items-center border-b border-gray-300 dark:border-[#2a2a2a] last:border-0 hover:bg-gray-100 dark:hover:bg-[#1f1f1f]"
-        >
-          <Input
-            placeholder="key"
-            value={item.key}
-            onChange={(event) => {
-              const nextItems = [...items];
-              nextItems[index] = { ...nextItems[index], key: event.target.value };
-              setItems(nextItems);
-            }}
-            className="h-10 flex-1 rounded-none border-0 border-r border-gray-300 dark:border-[#2a2a2a] bg-transparent text-xs text-gray-700 dark:text-slate-300 placeholder-gray-400 dark:placeholder-slate-600 focus-visible:z-10 focus-visible:ring-1 focus-visible:ring-[#5b5bff]"
-          />
-          <Input
-            placeholder="value"
-            value={item.value}
-            onChange={(event) => {
-              const nextItems = [...items];
-              nextItems[index] = { ...nextItems[index], value: event.target.value };
-              setItems(nextItems);
-            }}
-            className="h-10 flex-1 rounded-none border-0 border-r border-gray-300 dark:border-[#2a2a2a] bg-transparent text-xs text-gray-700 dark:text-slate-300 placeholder-gray-400 dark:placeholder-slate-600 focus-visible:z-10 focus-visible:ring-1 focus-visible:ring-[#5b5bff]"
-          />
-          <div className="flex w-16 items-center justify-center gap-1.5 px-1">
-            <input
-              type="checkbox"
-              checked={item.active}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto max-h-80 xl:max-h-none">
+        {items.map((item, index) => (
+          <div
+            key={item.id}
+            className="group flex items-center border-b border-gray-300 dark:border-[#2a2a2a] last:border-0 hover:bg-gray-100 dark:hover:bg-[#1f1f1f]"
+          >
+            <Input
+              placeholder="key"
+              value={item.key}
               onChange={(event) => {
                 const nextItems = [...items];
-                nextItems[index] = { ...nextItems[index], active: event.target.checked };
+                nextItems[index] = { ...nextItems[index], key: event.target.value };
                 setItems(nextItems);
               }}
-              className="h-3.5 w-3.5 cursor-pointer rounded-sm border-gray-400 dark:border-[#444] bg-transparent text-[#5b5bff] focus:ring-[#5b5bff]"
+              className="h-10 flex-1 rounded-none border-0 border-r border-gray-300 dark:border-[#2a2a2a] bg-transparent text-xs text-gray-700 dark:text-slate-300 placeholder-gray-400 dark:placeholder-slate-600 focus-visible:z-10 focus-visible:ring-1 focus-visible:ring-[#5b5bff]"
             />
-            <button
-              type="button"
-              onClick={() => setItems(items.filter((_, itemIndex) => itemIndex !== index))}
-              className="p-1 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            <Input
+              placeholder="value"
+              value={item.value}
+              onChange={(event) => {
+                const nextItems = [...items];
+                nextItems[index] = { ...nextItems[index], value: event.target.value };
+                setItems(nextItems);
+              }}
+              className="h-10 flex-1 rounded-none border-0 border-r border-gray-300 dark:border-[#2a2a2a] bg-transparent text-xs text-gray-700 dark:text-slate-300 placeholder-gray-400 dark:placeholder-slate-600 focus-visible:z-10 focus-visible:ring-1 focus-visible:ring-[#5b5bff]"
+            />
+            <div className="flex w-16 items-center justify-center gap-1.5 px-1">
+              <input
+                type="checkbox"
+                checked={item.active}
+                onChange={(event) => {
+                  const nextItems = [...items];
+                  nextItems[index] = { ...nextItems[index], active: event.target.checked };
+                  setItems(nextItems);
+                }}
+                className="h-3.5 w-3.5 cursor-pointer rounded-sm border-gray-400 dark:border-[#444] bg-transparent text-[#5b5bff] focus:ring-[#5b5bff]"
+              />
+              <button
+                type="button"
+                onClick={() => setItems(items.filter((_, itemIndex) => itemIndex !== index))}
+                className="p-1 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
       <div className="flex bg-white dark:bg-[#141414]">
         <button
           type="button"
@@ -1046,7 +1058,13 @@ export default function RestClientPage() {
     if (!raw) return;
     try {
       // Normalize line continuations: bash (\<newline>) and Windows CMD (^<newline>), both CRLF and LF
-      const normalized = raw.replace(/\\\r?\n/g, ' ').replace(/\^\r?\n/g, ' ');
+      // Also decode %27/%22 used as shell close-quotes by some browser devtools (only when followed
+      // by whitespace, so mid-value encoded characters like %27%20 are left untouched).
+      const normalized = raw
+        .replace(/\\\r?\n/g, ' ')
+        .replace(/\^\r?\n/g, ' ')
+        .replace(/%27(?=\s|$)/gi, "'")
+        .replace(/%22(?=\s|$)/gi, '"');
 
       // Tokenize respecting single-quoted (bash) and double-quoted (bash/cmd) strings
       const tokens: string[] = [];
@@ -1179,6 +1197,17 @@ export default function RestClientPage() {
             colon !== -1
               ? { username: userRaw.slice(0, colon), password: userRaw.slice(colon + 1) }
               : { username: userRaw, password: '' };
+        } else if (token === '-b' || token === '--cookie') {
+          const cookieVal = getValue();
+          // Add as Cookie header (merge if one already exists)
+          const existing = headers.find((h) => h.key.toLowerCase() === 'cookie');
+          if (existing) {
+            existing.value += '; ' + cookieVal;
+          } else {
+            headers.push({ key: 'Cookie', value: cookieVal });
+          }
+        } else if (token === '-c' || token === '--cookie-jar') {
+          getValue(); // consume path value, don't use it
         } else if (token === '--url') {
           url = getValue();
         } else if (DISCARD_VALUE_FLAGS.has(token)) {
@@ -2015,7 +2044,7 @@ export default function RestClientPage() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
             <div className="shrink-0 bg-gray-50 dark:bg-[#171717] p-4">
               <div className="flex h-[42px] items-center overflow-visible rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] shadow-sm">
                 <div className="relative h-full w-28 shrink-0 border-r border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] transition-colors hover:bg-gray-200 dark:hover:bg-[#252525]">
@@ -2039,12 +2068,20 @@ export default function RestClientPage() {
                 <input
                   value={activeTab?.url ?? ''}
                   onChange={(event) => updateTab(activeTabId, (tab) => ({ ...tab, url: event.target.value }))}
+                  onPaste={(event) => {
+                    const pasted = event.clipboardData.getData('text');
+                    if (pasted.trimStart().toLowerCase().startsWith('curl ')) {
+                      event.preventDefault();
+                      setCurlImportValue(pasted);
+                      setCurlImportOpen(true);
+                    }
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       void handleSend(false);
                     }
                   }}
-                  placeholder="https://echo.hoppscotch.io"
+                  placeholder="https://localhost:3000/api"
                   className="h-full w-full flex-1 bg-white dark:bg-[#1e1e1e] px-4 font-mono text-[13px] text-gray-800 dark:text-slate-200 outline-none transition-colors placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-[#222]"
                 />
                 <button
@@ -2111,9 +2148,9 @@ export default function RestClientPage() {
               </div>
             </div>
 
-            <div className="flex flex-1 flex-col overflow-hidden border-t border-gray-200 dark:border-[#222222] xl:flex-row">
+            <div className="flex flex-1 min-h-0 flex-col overflow-hidden border-t border-gray-200 dark:border-[#222222] xl:flex-row">
               <div className="flex w-full shrink-0 flex-col border-b border-gray-200 dark:border-[#222222] xl:w-1/2 xl:shrink xl:border-b-0 xl:border-r">
-                <Tabs defaultValue="params" className="flex flex-1 flex-col">
+                <Tabs defaultValue="params" className="flex flex-1 min-h-0 flex-col">
                   <TabsList className="hide-scrollbar h-11 w-full shrink-0 justify-start overflow-x-auto rounded-none border-b border-gray-200 dark:border-[#222222] bg-gray-50 dark:bg-[#171717] px-1 py-0">
                     <TabsTrigger
                       className="h-full rounded-none border-b-2 border-transparent px-4 text-xs font-semibold text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300 data-[state=active]:border-[#5b5bff] data-[state=active]:bg-transparent data-[state=active]:text-gray-900 dark:data-[state=active]:text-white"
@@ -2141,8 +2178,11 @@ export default function RestClientPage() {
                     </TabsTrigger>
                   </TabsList>
 
-                  <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-[#171717] p-4">
-                    <TabsContent value="params" className="m-0 flex h-full flex-col outline-none">
+                  <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-gray-50 dark:bg-[#171717]">
+                    <TabsContent
+                      value="params"
+                      className="m-0 flex flex-1 min-h-0 flex-col p-4 overflow-y-auto outline-none"
+                    >
                       <div className="mb-3 text-[11px] font-bold tracking-wide text-gray-500 dark:text-slate-400">
                         Query Parameters
                       </div>
@@ -2153,7 +2193,10 @@ export default function RestClientPage() {
                       />
                     </TabsContent>
 
-                    <TabsContent value="headers" className="m-0 flex h-full flex-col outline-none">
+                    <TabsContent
+                      value="headers"
+                      className="m-0 flex flex-1 min-h-0 flex-col p-4 overflow-hidden outline-none"
+                    >
                       <div className="mb-3 text-[11px] font-bold tracking-wide text-gray-500 dark:text-slate-400">
                         Headers
                       </div>
@@ -2164,7 +2207,10 @@ export default function RestClientPage() {
                       />
                     </TabsContent>
 
-                    <TabsContent value="body" className="m-0 flex h-full flex-col outline-none">
+                    <TabsContent
+                      value="body"
+                      className="m-0 flex flex-1 min-h-0 flex-col p-4 overflow-y-auto outline-none"
+                    >
                       <div className="flex items-center justify-between rounded-t border border-b-0 border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] p-2 text-[11px] text-gray-700 dark:text-slate-300">
                         <span className="font-semibold text-[#5b5bff]">raw</span>
                         <Select
@@ -2211,7 +2257,10 @@ export default function RestClientPage() {
                       )}
                     </TabsContent>
 
-                    <TabsContent value="auth" className="m-0 flex h-full flex-col outline-none">
+                    <TabsContent
+                      value="auth"
+                      className="m-0 flex flex-1 min-h-0 flex-col p-4 overflow-y-auto outline-none"
+                    >
                       <div className="mb-3 max-w-md space-y-4">
                         <div className="space-y-2">
                           <div className="text-[11px] font-bold tracking-wide text-gray-500 dark:text-slate-400">

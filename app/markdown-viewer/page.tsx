@@ -259,9 +259,11 @@ const THEMES: Record<
       prose-code:text-amber-700 dark:prose-code:text-amber-400
       prose-code:bg-amber-50 dark:prose-code:bg-amber-900/20
       prose-code:border-amber-100 dark:prose-code:border-amber-900/30
-      prose-table:ring-slate-200 dark:prose-table:ring-white/10
-      prose-th:bg-slate-100/50 dark:prose-th:bg-white/[0.02]
-      prose-tr:border-b prose-tr:border-slate-200 dark:prose-tr:border-white/10 last:prose-tr:border-b-0
+      prose-table:border-slate-200 dark:prose-table:border-slate-700/60
+      prose-th:bg-slate-100 dark:prose-th:bg-slate-800/60
+      prose-tr:border-b prose-tr:border-slate-200 dark:prose-tr:border-slate-700/60 last:prose-tr:border-b-0
+      [&_tbody_tr:nth-child(even)]:bg-slate-50/70 dark:[&_tbody_tr:nth-child(even)]:bg-white/[0.03]
+      [&_tbody_tr:hover]:bg-slate-100/80 dark:[&_tbody_tr:hover]:bg-white/[0.05]
       prose-hr:border-slate-200 dark:prose-hr:border-slate-700`,
     codeHeader: 'bg-slate-900 border-slate-800',
     codeBorder: 'border-slate-200/80 dark:border-slate-800/80',
@@ -282,9 +284,11 @@ const THEMES: Record<
       prose-blockquote:text-slate-300
       prose-code:text-green-400
       prose-code:bg-[#1a1a2e] prose-code:border-violet-900/50
-      prose-table:ring-violet-900/40
-      prose-th:bg-white/[0.02]
+      prose-table:border-violet-900/50
+      prose-th:bg-violet-950/50
       prose-tr:border-b prose-tr:border-violet-900/40 last:prose-tr:border-b-0
+      [&_tbody_tr:nth-child(even)]:bg-violet-950/25
+      [&_tbody_tr:hover]:bg-violet-900/25
       prose-hr:border-violet-800/60`,
     codeHeader: 'bg-[#0f0f1a] border-violet-900/60',
     codeBorder: 'border-violet-900/40',
@@ -305,10 +309,11 @@ const THEMES: Record<
       prose-blockquote:text-[#d8dee9]
       prose-code:text-[#a3be8c]
       prose-code:bg-[#2e3440] prose-code:border-[#3b4252]
-      prose-table:border-[#3b4252]/40
-      prose-th:bg-[#2e3440]/40
-      prose-tr:border-b prose-tr:border-[#3b4252]/40 last:prose-tr:border-b-0
-      prose-td:border-0
+      prose-table:border-[#3b4252]
+      prose-th:bg-[#2e3440]/80
+      prose-tr:border-b prose-tr:border-[#3b4252]/80 last:prose-tr:border-b-0
+      [&_tbody_tr:nth-child(even)]:bg-[#2e3440]/50
+      [&_tbody_tr:hover]:bg-[#3b4252]/40
       prose-hr:border-[#3b4252]`,
     codeHeader: 'bg-[#242933] border-[#3b4252]',
     codeBorder: 'border-[#3b4252]',
@@ -333,10 +338,12 @@ const BASE_PROSE = `prose prose-sm max-w-none w-full mx-auto
   prose-code:px-1.5 prose-code:py-0.5 prose-code:font-mono prose-code:text-[0.75em]
   prose-code:rounded prose-code:border
   prose-code:before:content-none prose-code:after:content-none
-  prose-table:border-separate prose-table:border-spacing-0 prose-table:w-full prose-table:text-[0.75rem] !prose-table:mt-0 !prose-table:mb-8
-  prose-table:rounded-[8px] prose-table:overflow-hidden prose-table:border-[1px]
-  prose-th:px-5 prose-th:py-3 prose-td:px-5 prose-td:py-3 prose-th:text-left prose-th:font-semibold prose-th:uppercase prose-th:tracking-[0.1em] prose-th:text-[0.7rem]
+  prose-table:border-separate prose-table:border-spacing-0 prose-table:w-full prose-table:text-[0.75rem] prose-table:my-6
+  prose-table:rounded-lg prose-table:overflow-hidden prose-table:border prose-table:shadow-sm
+  prose-th:px-4 prose-th:py-2.5 prose-td:px-4 prose-td:py-2.5 prose-th:text-left prose-th:font-semibold prose-th:uppercase prose-th:tracking-[0.08em] prose-th:text-[0.67rem]
   prose-th:text-slate-500 dark:prose-th:text-slate-400
+  prose-td:text-[0.78rem] prose-td:leading-5 prose-td:align-middle prose-th:align-middle
+  [&_tbody_tr]:transition-colors
   prose-img:rounded-xl prose-img:shadow-lg prose-img:my-7
   prose-hr:my-8
   mt-5`;
@@ -526,6 +533,13 @@ export default function MarkdownViewerPage() {
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
+                      table({ node, children, ...props }: any) {
+                        return (
+                          <div className="overflow-x-auto">
+                            <table {...props}>{children}</table>
+                          </div>
+                        );
+                      },
                       code({ node, inline, className, children, ...props }: any) {
                         const match = /language-(\w+)/.exec(className || '');
                         const lang = match?.[1];

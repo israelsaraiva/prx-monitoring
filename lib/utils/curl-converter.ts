@@ -36,9 +36,19 @@ export function parseCurlCommand(curlCommand: string): CurlParseResult {
       result.method = methodMatch[1].toUpperCase();
     }
 
+    // Before URL extraction, decode %27 (URL-encoded single quote) so it acts as a proper
+    // shell close-quote. Some browser devtools emit %27 instead of ' when URL contains quotes.
+    normalized = normalized.replace(/%27/gi, "'").replace(/%22/gi, '"');
+
     const urlQuotedMatch = normalized.match(/curl\s+['"]([^'"]+)['"]/i);
     if (urlQuotedMatch) {
-      result.url = urlQuotedMatch[1];
+      let url = urlQuotedMatch[1];
+      // Strip any trailing curl flags that leaked in (e.g. " -H " captured before the real close-quote)
+      const flagLeakIndex = url.search(/\s+-[A-Za-z-]/);
+      if (flagLeakIndex > 0) {
+        url = url.substring(0, flagLeakIndex);
+      }
+      result.url = url.trimEnd();
     } else {
       const parts = normalized.split(/\s+/);
       for (let i = 1; i < parts.length; i++) {
