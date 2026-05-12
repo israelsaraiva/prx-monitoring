@@ -115,9 +115,14 @@ export default function JsonViewerPage() {
   }, [kafkaMessages, searchQuery, filterType, filterValue]);
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 animate-in fade-in duration-300">
-      <div className="h-full max-w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8 flex flex-col">
-        <div className="mb-4 sm:mb-6 flex-shrink-0">
+    <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 relative selection:bg-purple-200 dark:selection:bg-purple-900 animate-in fade-in duration-300">
+      {/* Background decoration matching home page */}
+      <div className="absolute inset-0 z-0 h-full w-full bg-slate-50 dark:bg-slate-950 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]">
+        <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-purple-400 dark:bg-purple-600 opacity-20 blur-[100px]"></div>
+      </div>
+
+      <div className="relative z-10 h-full w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8 flex flex-col">
+        <div className="mb-4 sm:mb-6 flex-shrink-0 animate-in fade-in slide-in-from-top-4 duration-500">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-2">
             <div className="flex items-start gap-2 sm:gap-3">
               <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center shadow-lg flex-shrink-0">
@@ -148,8 +153,8 @@ export default function JsonViewerPage() {
 
         <div className="flex-1 min-h-0">
           <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full items-stretch">
-            <div className="w-full lg:w-[300px] lg:flex-shrink-0 self-start">
-              <Card className="border-2 border-purple-200/50 shadow-lg bg-gradient-to-br from-white to-purple-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-purple-800/30 h-full flex flex-col">
+            <div className="w-full lg:w-[350px] lg:flex-shrink-0 self-start group rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl hover:shadow-xl transition-all duration-500 overflow-hidden h-full flex flex-col min-h-0">
+              <Card className="border-0 shadow-none bg-transparent h-full flex flex-col min-h-0">
                 <CardHeader className="flex-shrink-0">
                   <CardTitle className="text-xl sm:text-2xl">File Upload</CardTitle>
                   <CardDescription>Select a Splunk JSON file to analyze</CardDescription>
@@ -213,8 +218,8 @@ export default function JsonViewerPage() {
             </div>
 
             <div className="w-full lg:flex-1 overflow-hidden h-full">
-              <Card className="border-2 border-purple-200/50 shadow-lg bg-gradient-to-br from-white to-purple-50/20 dark:from-slate-900 dark:to-slate-800 dark:border-purple-800/30 h-full flex flex-col min-h-0">
-                <CardHeader className="pb-4 flex-shrink-0">
+              <Card className="rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl shadow-xl h-full flex flex-col min-h-0 overflow-hidden transition-all duration-500">
+                <CardHeader className="pb-4 flex-shrink-0 border-b border-slate-200/40 dark:border-slate-800/40 bg-white/40 dark:bg-slate-900/40">
                   <div className="flex flex-col gap-4">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                       <div>

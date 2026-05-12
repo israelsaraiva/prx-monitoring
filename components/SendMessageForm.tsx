@@ -118,86 +118,104 @@ export function SendMessageForm({ broker, defaultTopic, onMessageSent, onExpand 
   }, [onExpand]);
 
   return (
-    <div className="space-y-4 h-full flex flex-col">
-      <div className="shrink-0">
-        <CardTitle className="text-xl sm:text-2xl flex items-center gap-2">Send Kafka Message</CardTitle>
-        <CardDescription className="mt-1 text-xs sm:text-sm">Send a message to a Kafka topic</CardDescription>
+    <div className="flex flex-col h-full bg-transparent overflow-hidden -mx-4 -my-4 sm:-mx-6 sm:-my-6 lg:-mx-6 lg:-my-6">
+      {/* Title Header */}
+      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200/40 dark:border-slate-800/40 bg-white/40 dark:bg-slate-900/40 shrink-0">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Send Message</h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Produce a message directly to a Kafka topic</p>
+        </div>
       </div>
-      <div className="flex-1 flex flex-col min-h-0 space-y-4 pr-2">
-        <div className="space-y-4 overflow-y-auto">
-          <div className="space-y-2">
-            <Label htmlFor="send-topic" className="text-sm font-medium">
-              Topic *
-            </Label>
-            <Input
+
+      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-6 space-y-5">
+        <div className="space-y-4 shrink-0">
+          <div className="space-y-1.5">
+            <label htmlFor="send-topic" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Topic <span className="text-red-500">*</span>
+            </label>
+            <input
               id="send-topic"
               placeholder="Enter topic name"
               value={sendTopic}
               onChange={(e) => setSendTopic(e.target.value)}
-              className="h-10"
+              className="w-full h-10 px-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-colors shadow-inner"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="send-key" className="text-sm font-medium">
+          <div className="space-y-1.5">
+            <label htmlFor="send-key" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
               Key (optional)
-            </Label>
-            <Input
+            </label>
+            <input
               id="send-key"
-              placeholder="Enter message key (optional)"
+              placeholder="Enter message key"
               value={sendKey}
               onChange={(e) => setSendKey(e.target.value)}
-              className="h-10"
+              className="w-full h-10 px-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-colors shadow-inner"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="send-headers" className="text-sm font-medium">
+          <div className="space-y-1.5">
+            <label htmlFor="send-headers" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
               Headers (JSON, optional)
-            </Label>
-            <Textarea
+            </label>
+            <textarea
               id="send-headers"
-              placeholder='{"header1": "value1", "header2": "value2"}'
+              placeholder='{"header1": "value1"}'
               value={sendHeaders}
               onChange={(e) => setSendHeaders(e.target.value)}
-              className="font-mono text-xs min-h-[80px] border-slate-200/60 dark:border-slate-700/50"
+              className="w-full h-24 p-3 font-mono text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-colors shadow-inner resize-none"
             />
           </div>
         </div>
-        <div className="space-y-2 flex-1 flex flex-col min-h-0">
-          <Label htmlFor="send-value" className="text-sm font-medium">
-            Message Value (JSON) *
-          </Label>
-          <Textarea
-            id="send-value"
-            placeholder="Enter message content as JSON"
-            value={sendValue}
-            onChange={(e) => setSendValue(e.target.value)}
-            className="font-mono text-[10px] flex-1 border-slate-200/60 dark:border-slate-700/50"
-          />
+
+        <div className="space-y-1.5 flex-1 flex flex-col min-h-0">
+          <label
+            htmlFor="send-value"
+            className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between"
+          >
+            <span>
+              Message Value (JSON) <span className="text-red-500">*</span>
+            </span>
+          </label>
+          <div className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded shadow-inner flex flex-col overflow-hidden focus-within:ring-2 focus-within:ring-teal-500/50 focus-within:border-teal-500 transition-colors">
+            <div className="border-b border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-900/50 px-3 py-2 flex items-center">
+              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">RAW JSON</span>
+            </div>
+            <textarea
+              id="send-value"
+              placeholder='{\n  "message": "hello world"\n}'
+              value={sendValue}
+              onChange={(e) => setSendValue(e.target.value)}
+              className="flex-1 w-full p-4 font-mono text-[11px] bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 outline-none resize-none leading-relaxed"
+            />
+          </div>
         </div>
       </div>
-      <div className="shrink-0 pt-2 border-t-gray-400 space-y-2">
-        <Button
+
+      {/* Action Footer */}
+      <div className="p-4 border-t border-slate-200/40 dark:border-slate-800/40 bg-white/40 dark:bg-slate-900/40 shrink-0 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
           onClick={sendMessage}
           disabled={isSending || !broker || !sendTopic || !sendValue}
-          className="w-full"
-          size="lg"
+          className="h-10 w-full flex items-center justify-center rounded text-xs font-semibold bg-teal-600 text-white hover:bg-teal-700 transition-all shadow-sm hover:shadow-md disabled:opacity-50 border border-teal-700/50"
         >
           {isSending ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sending...
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...
             </>
           ) : (
             <>
-              <Send className="mr-2 h-4 w-4" />
-              Send Message
+              <Send className="mr-2 h-3.5 w-3.5" /> Send Message
             </>
           )}
-        </Button>
-        <Button onClick={clearForm} variant="outline" disabled={isSending} className="w-full" size="sm">
+        </button>
+        <button
+          onClick={clearForm}
+          disabled={isSending}
+          className="h-10 w-full flex items-center justify-center rounded text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:bg-slate-900/80 dark:border-slate-700/80 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white transition-all shadow-sm disabled:opacity-50"
+        >
           <Trash2 className="mr-2 h-4 w-4" />
           Clear Form
-        </Button>
+        </button>
       </div>
     </div>
   );

@@ -228,8 +228,8 @@ export function GraphQLSubscription({
 
   return (
     <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full items-stretch min-h-0">
-      <Card className="border-2 border-blue-200/50 shadow-lg bg-gradient-to-br from-white to-blue-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-blue-800/30 flex flex-col lg:w-[500px] lg:flex-shrink-0 self-start">
-        <CardHeader className="pb-4 flex-shrink-0">
+      <Card className="rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl shadow-xl flex flex-col lg:w-[450px] lg:flex-shrink-0 self-start transition-all duration-500 overflow-hidden h-full min-h-0">
+        <CardHeader className="pb-4 flex-shrink-0 border-b border-slate-200/40 dark:border-slate-800/40 bg-white/40 dark:bg-slate-900/40">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 sm:gap-3">
               <div>
@@ -274,7 +274,7 @@ export function GraphQLSubscription({
         <CardContent className="space-y-5">
           <div className="space-y-4 flex-shrink-0">
             <div className="space-y-2">
-              <Label htmlFor="endpoint" className="text-sm font-medium">
+              <Label htmlFor="endpoint" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                 Endpoint URL
               </Label>
               <Input
@@ -283,11 +283,11 @@ export function GraphQLSubscription({
                 value={endpoint}
                 onChange={(e) => setEndpoint(e.target.value)}
                 disabled={isConnected}
-                className="h-10"
+                className="h-10 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800/80 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus-visible:ring-blue-500/50 shadow-inner"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="headers" className="text-sm font-medium">
+              <Label htmlFor="headers" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                 Headers (JSON)
               </Label>
               <Textarea
@@ -296,9 +296,9 @@ export function GraphQLSubscription({
                 value={headers}
                 onChange={(e) => setHeaders(e.target.value)}
                 disabled={isConnected}
-                className="font-mono text-xs min-h-[80px] rounded-md border-slate-200/60 dark:border-slate-700/40 focus:border-blue-500/60 dark:focus:border-blue-400/60 transition-colors"
+                className="font-mono text-xs min-h-[80px] rounded-md bg-white/50 dark:bg-slate-950/50 border-slate-200/60 dark:border-slate-800/60 focus-visible:ring-blue-500/50 text-slate-800 dark:text-slate-200 transition-colors shadow-inner"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Optional: Add headers as JSON object. These will be sent with the connection.
               </p>
             </div>
@@ -319,9 +319,9 @@ export function GraphQLSubscription({
             </Button>
           </div>
           {isConnected && (
-            <div className="space-y-4 flex-shrink-0 pt-2 border-t border-slate-200/60 dark:border-slate-700/40">
+            <div className="space-y-4 flex-shrink-0 pt-4 mt-2 border-t border-slate-200/40 dark:border-slate-800/40">
               <div className="space-y-2">
-                <Label htmlFor="query" className="text-sm font-medium">
+                <Label htmlFor="query" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                   Subscription Query
                 </Label>
                 <Textarea
@@ -330,7 +330,7 @@ export function GraphQLSubscription({
                   value={subscriptionQuery}
                   onChange={(e) => setSubscriptionQuery(e.target.value)}
                   disabled={isSubscribed}
-                  className="font-mono text-xs min-h-[200px] rounded-md border-slate-200/60 dark:border-slate-700/40 focus:border-blue-500/60 dark:focus:border-blue-400/60 transition-colors"
+                  className="font-mono text-xs p-4 min-h-[200px] rounded-md bg-white/50 dark:bg-slate-950/50 border-slate-200/60 dark:border-slate-800/60 focus-visible:ring-blue-500/50 text-slate-800 dark:text-slate-200 transition-colors shadow-inner resize-none"
                 />
               </div>
               <div className="flex flex-col gap-3">
@@ -365,12 +365,14 @@ export function GraphQLSubscription({
         </CardContent>
       </Card>
 
-      <Card className="border-2 border-indigo-200/50 shadow-lg bg-gradient-to-br from-white to-indigo-50/20 dark:from-slate-900 dark:to-slate-800 dark:border-indigo-800/30 flex-1 flex flex-col h-full min-h-0">
-        <CardHeader className="pb-4 flex-shrink-0">
+      <Card className="rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl shadow-xl flex-1 flex flex-col h-full min-h-0 transition-all duration-500 overflow-hidden">
+        <CardHeader className="pb-4 flex-shrink-0 border-b border-slate-200/40 dark:border-slate-800/40 bg-white/40 dark:bg-slate-900/40">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-xl sm:text-2xl">Received Messages</CardTitle>
-              <CardDescription className="mt-1 text-xs sm:text-sm">
+              <CardTitle className="text-xl sm:text-2xl text-slate-900 dark:text-white font-bold">
+                Received Messages
+              </CardTitle>
+              <CardDescription className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                 {messages.length} message{messages.length !== 1 ? 's' : ''} received
               </CardDescription>
             </div>
@@ -385,43 +387,47 @@ export function GraphQLSubscription({
           </div>
         </CardHeader>
         <CardContent className="flex-1 overflow-hidden">
-          <div className="space-y-3 h-full overflow-y-auto pr-2">
+          <div className="space-y-3 h-full overflow-y-auto pr-2 pt-4 pl-4">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center h-full">
-                <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 flex items-center justify-center mb-4">
+                <div className="h-16 w-16 rounded-full bg-blue-100/50 dark:bg-blue-900/20 flex items-center justify-center mb-4 ring-1 ring-blue-500/20">
                   <Database className="h-8 w-8 text-blue-600 dark:text-blue-400" />
                 </div>
-                <p className="text-muted-foreground font-medium">No messages received yet</p>
-                <p className="text-sm text-muted-foreground mt-1">Connect to start receiving real-time messages</p>
+                <p className="text-slate-600 dark:text-slate-300 font-medium">No messages received yet</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Connect to start receiving real-time messages
+                </p>
               </div>
             ) : (
               messages.map((message) => (
                 <div
                   key={message.id}
-                  className="group border border-blue-200/50 dark:border-blue-800/30 rounded-xl p-5 bg-gradient-to-br from-white to-blue-50/20 dark:from-slate-800 dark:to-slate-800/50 hover:from-blue-50 hover:to-indigo-50/30 dark:hover:from-slate-700 dark:hover:to-slate-700/50 transition-all shadow-sm hover:shadow-md"
+                  className="group border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-5 bg-white/50 dark:bg-slate-900/50 hover:bg-white/80 dark:hover:bg-slate-800/80 transition-all shadow-sm hover:shadow-md"
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex items-center gap-2">
-                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs font-medium text-muted-foreground">
+                      <Clock className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                      <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
                         {message.timestamp.toLocaleTimeString()}
                       </span>
-                      <span className="text-xs text-muted-foreground">• {message.timestamp.toLocaleDateString()}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        • {message.timestamp.toLocaleDateString()}
+                      </span>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity bg-white/50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-700"
                       onClick={() => copyToClipboard(message.data, message.id)}
                     >
                       {copiedId === message.id ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
                       ) : (
-                        <Copy className="h-3.5 w-3.5" />
+                        <Copy className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
                       )}
                     </Button>
                   </div>
-                  <div className="font-mono text-xs min-h-[200px] max-h-[300px] rounded-md border border-indigo-200/60 dark:border-indigo-800/40 bg-indigo-50/30 dark:bg-indigo-950/20 p-3 overflow-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                  <div className="font-mono text-xs min-h-[200px] max-h-[300px] rounded-md border border-slate-200/40 dark:border-slate-800/40 bg-slate-50/50 dark:bg-slate-950/50 p-4 overflow-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words shadow-inner">
                     {message.data}
                   </div>
                 </div>

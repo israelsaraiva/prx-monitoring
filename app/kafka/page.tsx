@@ -157,17 +157,24 @@ export default function KafkaPage() {
   }, [kafkaMessages, kafkaSearchQuery]);
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 animate-in fade-in duration-300">
-      <div className="h-full max-w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8 flex flex-col">
-        <div className="mb-4 sm:mb-6 flex-shrink-0">
+    <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 relative selection:bg-teal-200 dark:selection:bg-teal-900 animate-in fade-in duration-300">
+      {/* Background decoration matching home page */}
+      <div className="absolute inset-0 z-0 h-full w-full bg-slate-50 dark:bg-slate-950 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]">
+        <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-teal-400 dark:bg-teal-600 opacity-20 blur-[100px]"></div>
+      </div>
+
+      <div className="relative z-10 h-full w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8 flex flex-col">
+        <div className="mb-4 sm:mb-6 flex-shrink-0 animate-in fade-in slide-in-from-top-4 duration-500">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-2">
             <div className="flex items-start gap-2 sm:gap-3">
-              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg flex-shrink-0">
-                <Activity className="h-4 w-4 sm:h-6 sm:w-6 text-white" />
+              <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl bg-teal-100/80 dark:bg-teal-500/10 flex items-center justify-center shadow-sm ring-1 ring-inset ring-teal-500/20 flex-shrink-0 transition-transform hover:scale-105 duration-300">
+                <Activity className="h-5 w-5 sm:h-6 sm:w-6 text-teal-600 dark:text-teal-400" />
               </div>
               <div>
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight">Kafka Listener</h1>
-                <p className="text-sm sm:text-base text-muted-foreground mt-1">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  Kafka Listener
+                </h1>
+                <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
                   Real-time Kafka message monitoring and visualization
                 </p>
               </div>
@@ -191,7 +198,7 @@ export default function KafkaPage() {
         <div className="flex-1 min-h-0">
           <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full items-stretch">
             {/* Kafka Listener - Left Side */}
-            <div className="w-full lg:w-[500px] lg:flex-shrink-0 self-start">
+            <div className="w-full lg:w-[500px] lg:flex-shrink-0 self-start group rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl hover:shadow-xl transition-all duration-500 overflow-hidden">
               <KafkaListener
                 broker={kafkaBroker}
                 setBroker={setKafkaBroker}
@@ -211,12 +218,14 @@ export default function KafkaPage() {
               <div className="h-full flex flex-col lg:flex-row gap-4">
                 {/* Message Flow Visualization Card */}
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  <Card className="border-2 border-purple-200/50 shadow-lg bg-gradient-to-br from-white to-purple-50/20 dark:from-slate-900 dark:to-slate-800 dark:border-purple-800/30 h-full flex flex-col min-h-0">
-                    <CardHeader className="pb-4 flex-shrink-0">
+                  <Card className="rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl shadow-xl h-full flex flex-col min-h-0 overflow-hidden transition-all duration-500">
+                    <CardHeader className="pb-4 flex-shrink-0 border-b border-slate-200/40 dark:border-slate-800/40 bg-white/40 dark:bg-slate-900/40">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div>
-                          <CardTitle className="text-xl sm:text-2xl">Kafka Messages Flow Visualization</CardTitle>
-                          <CardDescription className="mt-1 text-xs sm:text-sm">
+                          <CardTitle className="text-xl sm:text-2xl text-slate-900 dark:text-white font-bold">
+                            Flow Visualization
+                          </CardTitle>
+                          <CardDescription className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                             Messages grouped by flowId and displayed in a graph format
                           </CardDescription>
                         </div>
@@ -224,16 +233,22 @@ export default function KafkaPage() {
                           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                             <Badge
                               variant="secondary"
-                              className="text-xs sm:text-sm bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                              className="text-xs sm:text-sm bg-teal-100/80 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300 border border-teal-200 dark:border-teal-800"
                             >
                               {new Set(filteredKafkaMessages.map((m) => m.flowId)).size} flow
                               {new Set(filteredKafkaMessages.map((m) => m.flowId)).size !== 1 ? 's' : ''}
                             </Badge>
-                            <Badge variant="outline" className="text-xs sm:text-sm">
+                            <Badge
+                              variant="outline"
+                              className="text-xs sm:text-sm border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm"
+                            >
                               {filteredKafkaMessages.length} message{filteredKafkaMessages.length !== 1 ? 's' : ''}
                               {kafkaSearchQuery && ` (of ${kafkaMessages.length})`}
                             </Badge>
-                            <Badge variant="outline" className="text-xs sm:text-sm">
+                            <Badge
+                              variant="outline"
+                              className="text-xs sm:text-sm border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm"
+                            >
                               {
                                 filteredKafkaMessages.filter((m) => m.flowId !== 'unknown' && m.flowId !== 'error')
                                   .length
@@ -284,10 +299,10 @@ export default function KafkaPage() {
                   </Button>
                   {/* Send Message Card */}
                   <div
-                    className={`h-full transition-all duration-300 ease-in-out overflow-hidden ${isSendMessageExpanded ? 'w-[400px] opacity-100' : 'w-0 opacity-0'}`}
+                    className={`h-full transition-all duration-300 ease-in-out overflow-hidden ${isSendMessageExpanded ? 'w-[400px] opacity-100 pl-4' : 'w-0 opacity-0'}`}
                   >
-                    <Card className="h-full border-2 border-teal-200/50 shadow-lg bg-gradient-to-br from-white to-teal-50/30 dark:from-slate-900 dark:to-slate-800 dark:border-teal-800/30 flex flex-col">
-                      <CardContent className="flex-1 overflow-hidden min-h-0 p-4 lg:p-6">
+                    <Card className="h-full rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl shadow-xl flex flex-col">
+                      <CardContent className="flex-1 overflow-hidden min-h-0 p-4 lg:p-6 bg-transparent">
                         <SendMessageForm
                           broker={kafkaBroker}
                           defaultTopic={kafkaTopics.split(',')[0]?.trim()}

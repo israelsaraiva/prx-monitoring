@@ -5,14 +5,14 @@ import { ThemeProvider } from 'next-themes';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'MACC Monitoring Tool',
+  title: 'Monitoring Tools',
   description: 'GraphQL Subscription and Kafka Message Listener',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body style={{ fontFamily: 'Jost, system-ui, -apple-system, sans-serif' }}>
+      <body suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <PageTransition>{children}</PageTransition>
           <Toaster />

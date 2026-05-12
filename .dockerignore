@@ -1,0 +1,7 @@
+.git
+.gitignore
+.husky
+.next
+node_modules
+*.md
+*.log
