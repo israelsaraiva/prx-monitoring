@@ -947,8 +947,24 @@ export default function RestClientPage() {
   const generateCodeSnippet = useCallback(
     (lang: 'curl' | 'http' | 'fetch' | 'axios' | 'python' | 'go') => {
       if (!activeTab) return '';
-      const { method, url, headers, body, bodyType, auth } = activeTab;
+      const { method, url, headers, params, body, bodyType, auth } = activeTab;
       const allHeaders = headers.filter((h) => h.key && h.active !== false);
+
+      // Build the full URL with active query params from the params tab (mirrors handleSend logic)
+      const activeParams = params.filter((p) => p.active && p.key.trim());
+      const fullUrl = (() => {
+        if (activeParams.length === 0) return url;
+        try {
+          const urlObj = new URL(/^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(url) ? url : `https://${url}`);
+          activeParams.forEach((p) => urlObj.searchParams.set(p.key, p.value));
+          return urlObj.toString();
+        } catch {
+          const sep = url.includes('?') ? '&' : '?';
+          return (
+            url + sep + activeParams.map((p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&')
+          );
+        }
+      })();
 
       // Merge auth into headers for snippet generation
       const authHeader: { key: string; value: string } | null = (() => {
@@ -968,24 +984,26 @@ export default function RestClientPage() {
         allH.map((h) => `${indent}${fmt(h.key, h.value)}`).join(sep);
 
       if (lang === 'curl') {
-        const parts = [`curl -X ${method.toUpperCase()} '${url}'`];
-        allH.forEach((h) => parts.push(`  -H '${h.key}: ${h.value}'`));
-        if (hasBody) parts.push(`  -d '${body.replace(/'/g, "\\'")}'`);
+        // Wrap in bash single quotes; embed literal ' using the '\'' idiom
+        const bsq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+        const parts = [`curl -X ${method.toUpperCase()} ${bsq(fullUrl)}`];
+        allH.forEach((h) => parts.push(`  -H ${bsq(`${h.key}: ${h.value}`)}`));
+        if (hasBody) parts.push(`  --data-raw ${bsq(body)}`);
         return parts.join(' \\\n');
       }
 
       if (lang === 'http') {
         const u = (() => {
           try {
-            const p = new URL(url);
+            const p = new URL(fullUrl);
             return `${p.pathname}${p.search}`;
           } catch {
-            return url;
+            return fullUrl;
           }
         })();
         const host = (() => {
           try {
-            return new URL(url).host;
+            return new URL(fullUrl).host;
           } catch {
             return '';
           }
@@ -997,23 +1015,25 @@ export default function RestClientPage() {
 
       if (lang === 'fetch') {
         const headerObj = allH.length ? `{\n${headerLines('      ', (k, v) => `'${k}': '${v}'`, ',\n')}\n    }` : '{}';
-        return `const response = await fetch('${url}', {\n  method: '${method.toUpperCase()}',\n  headers: ${headerObj},${hasBody ? `\n  body: \`${body}\`,` : ''}\n});\nconst data = await response.json();\nconsole.log(data);`;
+        // Escape backticks and template-literal special chars so the snippet is valid JS
+        const safeBody = hasBody ? body.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$') : '';
+        return `const response = await fetch('${fullUrl}', {\n  method: '${method.toUpperCase()}',\n  headers: ${headerObj},${hasBody ? `\n  body: \`${safeBody}\`,` : ''}\n});\nconst data = await response.json();\nconsole.log(data);`;
       }
 
       if (lang === 'axios') {
         const headerObj = allH.length ? `{\n${headerLines('    ', (k, v) => `'${k}': '${v}'`, ',\n')}\n  }` : '{}';
-        return `import axios from 'axios';\n\nconst response = await axios({\n  method: '${method.toLowerCase()}',\n  url: '${url}',\n  headers: ${headerObj},${hasBody ? `\n  data: \`${body}\`,` : ''}\n});\nconsole.log(response.data);`;
+        const safeBody = hasBody ? body.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$') : '';
+        return `import axios from 'axios';\n\nconst response = await axios({\n  method: '${method.toLowerCase()}',\n  url: '${fullUrl}',\n  headers: ${headerObj},${hasBody ? `\n  data: \`${safeBody}\`,` : ''}\n});\nconsole.log(response.data);`;
       }
 
       if (lang === 'python') {
         const headerDict = allH.length ? `{\n${headerLines('    ', (k, v) => `"${k}": "${v}"`, ',\n')}\n}` : '{}';
-        return `import requests\n\nheaders = ${headerDict}\n\nresponse = requests.${method.toLowerCase()}(\n    "${url}",\n    headers=headers,${hasBody ? `\n    data="""${body}""",` : ''}\n)\nprint(response.json())`;
+        return `import requests\n\nheaders = ${headerDict}\n\nresponse = requests.${method.toLowerCase()}(\n    "${fullUrl}",\n    headers=headers,${hasBody ? `\n    data="""${body}""",` : ''}\n)\nprint(response.json())`;
       }
 
       if (lang === 'go') {
-        const headerLines2 = allH.map((h) => `\treq.Header.Set("${h.key}", "${h.value}")`).join('\n');
-        const bodyPart = hasBody ? `\tbody := strings.NewReader(\`${body}\`)\n\t` : '\t';
-        return `package main\n\nimport (\n\t"fmt"\n\t"net/http"${hasBody ? '\n\t"strings"' : ''}\n)\n\nfunc main() {\n\t${hasBody ? `body := strings.NewReader(\`${body}\`)\n\treq, _ := http.NewRequest("${method.toUpperCase()}", "${url}", body)` : `req, _ := http.NewRequest("${method.toUpperCase()}", "${url}", nil)`}\n${headerLines2 ? headerLines2 + '\n' : ''}\n\tclient := &http.Client{}\n\tresp, _ := client.Do(req)\n\tdefer resp.Body.Close()\n\tfmt.Println(resp.Status)\n}`;
+        const goHeaders = allH.map((h) => `\treq.Header.Set("${h.key}", "${h.value}")`).join('\n');
+        return `package main\n\nimport (\n\t"fmt"\n\t"net/http"${hasBody ? '\n\t"strings"' : ''}\n)\n\nfunc main() {\n\t${hasBody ? `body := strings.NewReader(\`${body}\`)\n\treq, _ := http.NewRequest("${method.toUpperCase()}", "${fullUrl}", body)` : `req, _ := http.NewRequest("${method.toUpperCase()}", "${fullUrl}", nil)`}\n${goHeaders ? goHeaders + '\n' : ''}\n\tclient := &http.Client{}\n\tresp, _ := client.Do(req)\n\tdefer resp.Body.Close()\n\tfmt.Println(resp.Status)\n}`;
       }
 
       return '';
@@ -1025,25 +1045,37 @@ export default function RestClientPage() {
     const raw = curlImportValue.trim();
     if (!raw) return;
     try {
-      // Tokenize respecting single/double quotes and backslash-newline continuations
-      const normalized = raw.replace(/\\\n/g, ' ');
+      // Normalize line continuations: bash (\<newline>) and Windows CMD (^<newline>), both CRLF and LF
+      const normalized = raw.replace(/\\\r?\n/g, ' ').replace(/\^\r?\n/g, ' ');
+
+      // Tokenize respecting single-quoted (bash) and double-quoted (bash/cmd) strings
       const tokens: string[] = [];
       let current = '';
       let i = 0;
       while (i < normalized.length) {
         const ch = normalized[i];
-        if (ch === "'" || ch === '"') {
-          const quote = ch;
+        if (ch === '"') {
+          // Double-quoted string: \" is an escaped quote inside
           i++;
-          while (i < normalized.length && normalized[i] !== quote) {
-            if (normalized[i] === '\\' && quote === '"') {
+          while (i < normalized.length && normalized[i] !== '"') {
+            if (normalized[i] === '\\') {
               i++;
               current += normalized[i] ?? '';
-            } else current += normalized[i];
+            } else {
+              current += normalized[i];
+            }
             i++;
           }
           i++; // closing quote
-        } else if (ch === ' ' || ch === '\t') {
+        } else if (ch === "'") {
+          // Single-quoted string (bash): no escape processing
+          i++;
+          while (i < normalized.length && normalized[i] !== "'") {
+            current += normalized[i];
+            i++;
+          }
+          i++; // closing quote
+        } else if (ch === ' ' || ch === '\t' || ch === '\r' || ch === '\n') {
           if (current) {
             tokens.push(current);
             current = '';
@@ -1062,33 +1094,100 @@ export default function RestClientPage() {
       }
 
       let method = 'GET';
+      let methodExplicit = false;
       let url = '';
       const headers: { key: string; value: string }[] = [];
       let body = '';
       let basicAuth: { username: string; password: string } | null = null;
 
+      // Flags that consume the next token as a value but whose value we discard.
+      // This prevents stray numeric/string arguments from being mistaken for the URL.
+      const DISCARD_VALUE_FLAGS = new Set([
+        '-o',
+        '--output',
+        '-e',
+        '--referer',
+        '-A',
+        '--user-agent',
+        '--max-time',
+        '--connect-timeout',
+        '--retry',
+        '--retry-delay',
+        '--retry-max-time',
+        '--proxy',
+        '-x',
+        '--dns-servers',
+        '--resolve',
+        '--cert',
+        '--key',
+        '--cacert',
+        '--capath',
+        '--limit-rate',
+        '--interface',
+        '--unix-socket',
+        '--abstract-unix-socket',
+      ]);
+
       let idx = 1;
       while (idx < tokens.length) {
-        const token = tokens[idx];
+        let token = tokens[idx];
+
+        // Handle long flags with = syntax: --request=POST, --header=Content-Type: ...
+        let embeddedValue: string | undefined;
+        if (token.startsWith('--') && token.includes('=')) {
+          const eqIdx = token.indexOf('=');
+          embeddedValue = token.slice(eqIdx + 1);
+          token = token.slice(0, eqIdx);
+        }
+
+        // Returns the flag's value: embedded (--flag=val) or the next token
+        const getValue = (): string => {
+          if (embeddedValue !== undefined) return embeddedValue;
+          return tokens[++idx] ?? '';
+        };
+
         if (token === '-X' || token === '--request') {
-          method = tokens[++idx] ?? 'GET';
+          method = getValue().toUpperCase() || 'GET';
+          methodExplicit = true;
+        } else if (/^-X([A-Za-z]+)$/.test(token)) {
+          // Combined short flag: -XPOST, -XPUT, -XDELETE, etc.
+          method = token.slice(2).toUpperCase();
+          methodExplicit = true;
         } else if (token === '-H' || token === '--header') {
-          const raw = tokens[++idx] ?? '';
-          const colon = raw.indexOf(':');
-          if (colon !== -1) headers.push({ key: raw.slice(0, colon).trim(), value: raw.slice(colon + 1).trim() });
-        } else if (token === '-d' || token === '--data' || token === '--data-raw' || token === '--data-binary') {
-          body = tokens[++idx] ?? '';
-          if (method === 'GET') method = 'POST';
+          const headerRaw = getValue();
+          const colon = headerRaw.indexOf(':');
+          if (colon !== -1) {
+            headers.push({ key: headerRaw.slice(0, colon).trim(), value: headerRaw.slice(colon + 1).trim() });
+          }
+        } else if (
+          token === '-d' ||
+          token === '--data' ||
+          token === '--data-raw' ||
+          token === '--data-binary' ||
+          token === '--data-ascii'
+        ) {
+          body = getValue();
+          if (!methodExplicit && method === 'GET') method = 'POST';
+        } else if (token === '--data-urlencode') {
+          const val = getValue();
+          body = body ? body + '&' + val : val;
+          if (!methodExplicit && method === 'GET') method = 'POST';
         } else if (token === '-u' || token === '--user') {
-          const raw = tokens[++idx] ?? '';
-          const colon = raw.indexOf(':');
+          const userRaw = getValue();
+          const colon = userRaw.indexOf(':');
           basicAuth =
             colon !== -1
-              ? { username: raw.slice(0, colon), password: raw.slice(colon + 1) }
-              : { username: raw, password: '' };
+              ? { username: userRaw.slice(0, colon), password: userRaw.slice(colon + 1) }
+              : { username: userRaw, password: '' };
+        } else if (token === '--url') {
+          url = getValue();
+        } else if (DISCARD_VALUE_FLAGS.has(token)) {
+          getValue(); // consume but discard so its value isn't mistaken for the URL
         } else if (!token.startsWith('-')) {
-          url = token;
+          url = token; // positional argument — the URL
         }
+        // All other flag-like tokens are silently ignored (--compressed, -L, -k, etc.)
+
         idx++;
       }
 
@@ -1097,7 +1196,23 @@ export default function RestClientPage() {
         return;
       }
 
-      // Build KeyValue arrays
+      // Extract query params from URL into the params tab
+      let cleanUrl = url;
+      const kvParams: KeyValue[] = [];
+      try {
+        const urlForParsing = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(url) ? url : `https://${url}`;
+        const urlObj = new URL(urlForParsing);
+        if (urlObj.search) {
+          cleanUrl = url.split('?')[0];
+          urlObj.searchParams.forEach((value, key) => {
+            kvParams.push({ key, value, active: true, id: Date.now() + Math.floor(Math.random() * 10000) });
+          });
+        }
+      } catch {
+        // keep URL as-is if parsing fails
+      }
+
+      // Build header KeyValue arrays
       const kvHeaders: KeyValue[] = headers.map((h) => ({
         key: h.key,
         value: h.value,
@@ -1105,17 +1220,20 @@ export default function RestClientPage() {
         id: Date.now() + Math.floor(Math.random() * 10000),
       }));
       if (kvHeaders.length === 0) kvHeaders.push(createKeyValue());
+      if (kvParams.length === 0) kvParams.push(createKeyValue());
 
-      // Detect body type from Content-Type header
+      // Detect body type from Content-Type header, falling back to content inspection
       const contentType = headers.find((h) => h.key.toLowerCase() === 'content-type')?.value ?? '';
       let bodyType: BodyType = 'none';
       if (body) {
         if (contentType.includes('application/json')) bodyType = 'json';
         else if (contentType.includes('application/x-www-form-urlencoded')) bodyType = 'urlencoded';
-        else bodyType = 'text';
+        else if (contentType.includes('application/xml') || contentType.includes('text/xml')) bodyType = 'xml';
+        else if (contentType.includes('text/html')) bodyType = 'html';
+        else bodyType = guessBodyType(body);
       }
 
-      // Determine auth
+      // Promote Authorization header to auth config when recognized
       const authHeaderIdx = headers.findIndex((h) => h.key.toLowerCase() === 'authorization');
       let auth: AuthConfig = { type: 'none' };
       if (authHeaderIdx !== -1) {
@@ -1132,8 +1250,13 @@ export default function RestClientPage() {
             const decoded = atob(val.slice(6));
             const c = decoded.indexOf(':');
             auth = { type: 'basic', username: decoded.slice(0, c), password: decoded.slice(c + 1) };
+            kvHeaders.splice(
+              kvHeaders.findIndex((h) => h.key.toLowerCase() === 'authorization'),
+              1
+            );
+            if (kvHeaders.length === 0) kvHeaders.push(createKeyValue());
           } catch {
-            /* keep raw header */
+            /* keep raw header if decoding fails */
           }
         }
       } else if (basicAuth) {
@@ -1143,8 +1266,9 @@ export default function RestClientPage() {
       updateTab(activeTabId, (tab) => ({
         ...tab,
         method: method.toUpperCase(),
-        url,
+        url: cleanUrl,
         headers: kvHeaders,
+        params: kvParams,
         body,
         bodyType,
         auth,
@@ -2452,7 +2576,7 @@ export default function RestClientPage() {
           <DialogHeader>
             <DialogTitle className="text-sm text-gray-900 dark:text-slate-100">Import from cURL</DialogTitle>
             <DialogDescription className="text-xs text-gray-400 dark:text-slate-500">
-              Paste a cURL command to populate the current request tab
+              Paste a cURL command (bash or Windows CMD) to populate the current request tab
             </DialogDescription>
           </DialogHeader>
           <textarea
@@ -2462,7 +2586,7 @@ export default function RestClientPage() {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) parseCurlIntoTab();
             }}
             placeholder={
-              'curl -X POST https://api.example.com/data \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"key": "value"}\''
+              'Bash:\ncurl -X POST https://api.example.com/data \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"key": "value"}\'\n\nWindows CMD:\ncurl -X POST https://api.example.com/data ^\n  -H "Content-Type: application/json" ^\n  -d "{\\"key\\": \\"value\\"}"'
             }
             rows={8}
             className="w-full rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#0d0d0d] p-3 font-mono text-[11px] leading-relaxed text-gray-800 dark:text-slate-200 outline-none resize-none placeholder:text-gray-400 dark:placeholder:text-slate-600 focus:border-[#5b5bff]"
