@@ -5,12 +5,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowRightLeft,
+  BookMarked,
   ChevronDown,
   Clock,
   Code,
   Copy,
   CopyPlus,
   Download,
+  FileUp,
   Folder,
   Globe,
   HardDrive,
@@ -39,6 +42,7 @@ import {
   type BodyType,
   type Collection,
   type Environment,
+  type HeaderPreset,
   type HistoryEntry,
   type KeyValue,
   type SavedRequest,
@@ -46,11 +50,13 @@ import {
   getActiveEnvironmentId,
   getCollections,
   getEnvironments,
+  getHeaderPresets,
   getHistory,
   getSettings,
   interpolateEnv,
   saveCollections,
   saveEnvironments,
+  saveHeaderPresets,
   saveHistory,
   saveSettings,
   setActiveEnvironmentId as persistActiveEnvironmentId,
@@ -249,9 +255,9 @@ async function sendDirectRequest(
       'type' in requestBody &&
       'entries' in requestBody
     ) {
-      const rb = requestBody as { type: string; entries: [string, string][] };
+      const rb = requestBody as { type: string; entries: [string, string | File][] };
       if (rb.type === 'urlencoded') {
-        fetchOptions.body = new URLSearchParams(rb.entries);
+        fetchOptions.body = new URLSearchParams(rb.entries as [string, string][]);
       } else if (rb.type === 'form-data') {
         const fd = new FormData();
         rb.entries.forEach(([k, v]) => fd.append(k, v));
@@ -474,14 +480,37 @@ function PrettyJsonView({ json }: { json: string }) {
   );
 }
 
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const parts = text.split(regex);
+  return (
+    <>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="bg-yellow-300 dark:bg-yellow-600 text-inherit rounded-sm px-0.5">
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
 function KeyValueEditor({
   items,
   setItems,
   addLabel,
+  showFileType,
+  onFileChange,
 }: {
   items: KeyValue[];
   setItems: (items: KeyValue[]) => void;
   addLabel: string;
+  showFileType?: boolean;
+  onFileChange?: (id: number, file: File | null) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(items.length);
@@ -530,17 +559,49 @@ function KeyValueEditor({
               }}
               className="h-10 flex-1 rounded-none border-0 border-r border-gray-300 dark:border-[#2a2a2a] bg-transparent text-xs text-gray-700 dark:text-slate-300 placeholder-gray-400 dark:placeholder-slate-600 focus-visible:z-10 focus-visible:ring-1 focus-visible:ring-[#5b5bff]"
             />
-            <Input
-              placeholder="value"
-              value={item.value}
-              onChange={(event) => {
-                const nextItems = [...items];
-                nextItems[index] = { ...nextItems[index], value: event.target.value };
-                setItems(nextItems);
-              }}
-              className="h-10 flex-1 rounded-none border-0 border-r border-gray-300 dark:border-[#2a2a2a] bg-transparent text-xs text-gray-700 dark:text-slate-300 placeholder-gray-400 dark:placeholder-slate-600 focus-visible:z-10 focus-visible:ring-1 focus-visible:ring-[#5b5bff]"
-            />
+            {showFileType && item.fileType === 'file' ? (
+              <div className="flex h-10 flex-1 items-center border-r border-gray-300 dark:border-[#2a2a2a] px-2">
+                <input
+                  type="file"
+                  className="w-full text-[11px] text-gray-600 dark:text-slate-400 file:mr-2 file:py-0.5 file:px-2 file:rounded file:border-0 file:text-[11px] file:bg-gray-200 dark:file:bg-[#333] file:text-gray-700 dark:file:text-slate-300 hover:file:bg-gray-300"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    onFileChange?.(item.id, file);
+                    const nextItems = [...items];
+                    nextItems[index] = { ...nextItems[index], value: file?.name ?? '' };
+                    setItems(nextItems);
+                  }}
+                />
+              </div>
+            ) : (
+              <Input
+                placeholder="value"
+                value={item.value}
+                onChange={(event) => {
+                  const nextItems = [...items];
+                  nextItems[index] = { ...nextItems[index], value: event.target.value };
+                  setItems(nextItems);
+                }}
+                className="h-10 flex-1 rounded-none border-0 border-r border-gray-300 dark:border-[#2a2a2a] bg-transparent text-xs text-gray-700 dark:text-slate-300 placeholder-gray-400 dark:placeholder-slate-600 focus-visible:z-10 focus-visible:ring-1 focus-visible:ring-[#5b5bff]"
+              />
+            )}
             <div className="flex w-16 items-center justify-center gap-1.5 px-1">
+              {showFileType && (
+                <button
+                  type="button"
+                  title={item.fileType === 'file' ? 'Switch to text' : 'Switch to file'}
+                  onClick={() => {
+                    const nextItems = [...items];
+                    const next = item.fileType === 'file' ? 'text' : 'file';
+                    nextItems[index] = { ...nextItems[index], fileType: next, value: '' };
+                    setItems(nextItems);
+                    if (next !== 'file') onFileChange?.(item.id, null);
+                  }}
+                  className="p-1 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-[#5b5bff] group-hover:opacity-100"
+                >
+                  <FileUp className="h-3.5 w-3.5" />
+                </button>
+              )}
               <input
                 type="checkbox"
                 checked={item.active}
@@ -621,11 +682,26 @@ export default function RestClientPage() {
   const [renameCollectionValue, setRenameCollectionValue] = useState('');
   const [historySearch, setHistorySearch] = useState('');
   const [responseBodyMode, setResponseBodyMode] = useState<'pretty' | 'raw'>('pretty');
+  const [responseBodySearch, setResponseBodySearch] = useState('');
+  const [responseBodySearchOpen, setResponseBodySearchOpen] = useState(false);
+  const [headerPresets, setHeaderPresetsState] = useState<HeaderPreset[]>([]);
+  const [headerPresetsOpen, setHeaderPresetsOpen] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [requestTransferDialog, setRequestTransferDialog] = useState<{
+    mode: 'move' | 'copy';
+    sourceCollectionId: string;
+    requestId: string;
+    targetCollectionId: string;
+  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const sendMenuRef = useRef<HTMLDivElement | null>(null);
   const cancelControllerRef = useRef<AbortController | null>(null);
+  const headerPresetsRef = useRef<HTMLDivElement | null>(null);
+  // Stores File objects for form-data file rows keyed by KeyValue id (not persisted)
+  const uploadedFilesRef = useRef<Map<number, File>>(new Map());
   // Must be declared before the mount effect so it is false when the persist effect first fires
   const tabHydrationRef = useRef(false);
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0], [activeTabId, tabs]);
@@ -676,6 +752,7 @@ export default function RestClientPage() {
     setInlineSaveCollectionId(storedCollections[0]?.id ?? '');
     setExpandedCollections(Object.fromEntries(storedCollections.map((collection) => [collection.id, true])));
     setExpandedEnvironments(Object.fromEntries(storedEnvironments.map((environment) => [environment.id, true])));
+    setHeaderPresetsState(getHeaderPresets());
 
     if (storedTabs && storedTabs.tabs.length > 0) {
       const restoredTabs = storedTabs.tabs.map((t) => ({ ...t, response: null, loading: false }));
@@ -688,6 +765,15 @@ export default function RestClientPage() {
 
     tabHydrationRef.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!headerPresetsOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (!headerPresetsRef.current?.contains(e.target as Node)) setHeaderPresetsOpen(false);
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [headerPresetsOpen]);
 
   useEffect(() => {
     if (!sendMenuOpen) {
@@ -976,14 +1062,16 @@ export default function RestClientPage() {
           if (activeTab.bodyType === 'form-data' || activeTab.bodyType === 'urlencoded') {
             const entries = deserializeKeyValueBody(activeTab.body)
               .filter((item) => item.active && item.key.trim())
-              .map(
-                (item) =>
-                  [interpolateEnv(item.key, activeEnvironment), interpolateEnv(item.value, activeEnvironment)] as [
-                    string,
-                    string,
-                  ]
-              );
-
+              .map((item) => {
+                const k = interpolateEnv(item.key, activeEnvironment);
+                // For file-type rows, use the stored File object if available
+                if (activeTab.bodyType === 'form-data' && item.fileType === 'file') {
+                  const file = uploadedFilesRef.current.get(item.id);
+                  // File objects can only be used in direct fetch; proxy path gets the filename string
+                  return [k, file ?? item.value] as [string, string | File];
+                }
+                return [k, interpolateEnv(item.value, activeEnvironment)] as [string, string];
+              });
             requestBody = { type: activeTab.bodyType, entries };
           } else {
             requestBody = interpolateEnv(activeTab.body, activeEnvironment);
@@ -992,6 +1080,17 @@ export default function RestClientPage() {
 
         let data: RequestResponse;
         const useProxy = settingsDraft.useServerProxy && !isLocalUrl(urlObject);
+        // When using server proxy, File objects can't be JSON-serialized — replace with filename strings
+        let proxyRequestBody = requestBody;
+        if (useProxy && requestBody && typeof requestBody === 'object' && 'type' in (requestBody as object)) {
+          const rb = requestBody as { type: string; entries: [string, string | File][] };
+          if (rb.type === 'form-data') {
+            proxyRequestBody = {
+              ...rb,
+              entries: rb.entries.map(([k, v]) => [k, v instanceof File ? v.name : v] as [string, string]),
+            };
+          }
+        }
         // Apply local proxy: swap the origin of the target URL (keeps path+query)
         const effectiveUrl = settingsDraft.localProxyUrl
           ? applyLocalProxy(urlObject, settingsDraft.localProxyUrl)
@@ -1029,7 +1128,7 @@ export default function RestClientPage() {
               url: urlObject.toString(),
               method: activeTab.method,
               headers,
-              body: requestBody,
+              body: proxyRequestBody,
               timeout: settingsDraft.timeout,
               sslVerification: settingsDraft.sslVerification,
             }),
@@ -1188,6 +1287,84 @@ export default function RestClientPage() {
       );
     },
     [collections, syncCollections]
+  );
+
+  const transferRequest = useCallback(
+    (sourceCollectionId: string, requestId: string, targetCollectionId: string, mode: 'move' | 'copy') => {
+      const source = collections.find((c) => c.id === sourceCollectionId);
+      const request = source?.requests.find((r) => r.id === requestId);
+      if (!request || sourceCollectionId === targetCollectionId) return;
+      const transferred: SavedRequest = {
+        ...request,
+        id: mode === 'copy' ? createId() : request.id,
+        collectionId: targetCollectionId,
+      };
+      syncCollections(
+        collections.map((c) => {
+          if (c.id === sourceCollectionId)
+            return {
+              ...c,
+              requests: mode === 'move' ? c.requests.filter((r) => r.id !== requestId) : c.requests,
+            };
+          if (c.id === targetCollectionId) return { ...c, requests: [...c.requests, transferred] };
+          return c;
+        })
+      );
+      if (mode === 'move') {
+        setTabs((current) =>
+          current.map((t) => (t.savedRequestId === requestId ? { ...t, savedCollectionId: targetCollectionId } : t))
+        );
+      }
+      setRequestTransferDialog(null);
+      toast(mode === 'move' ? 'Request moved' : 'Request copied');
+    },
+    [collections, syncCollections]
+  );
+
+  const syncHeaderPresets = useCallback((next: HeaderPreset[]) => {
+    setHeaderPresetsState(next);
+    saveHeaderPresets(next);
+  }, []);
+
+  const applyHeaderPreset = useCallback(
+    (preset: HeaderPreset) => {
+      updateTab(activeTabId, (tab) => ({
+        ...tab,
+        headers: [
+          ...tab.headers.filter((h) => h.key.trim()),
+          ...preset.headers.map((h) => ({ ...h, id: Date.now() + Math.random() })),
+        ],
+      }));
+      setHeaderPresetsOpen(false);
+      toast(`Applied preset "${preset.name}"`);
+    },
+    [activeTabId]
+  );
+
+  const saveHeaderPreset = useCallback(
+    (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        toast('Enter a preset name');
+        return;
+      }
+      const headers = (activeTab?.headers ?? []).filter((h) => h.key.trim());
+      if (!headers.length) {
+        toast('No headers to save');
+        return;
+      }
+      const preset: HeaderPreset = { id: createId(), name: trimmed, headers };
+      syncHeaderPresets([...headerPresets, preset]);
+      setSavingPreset(false);
+      setNewPresetName('');
+      toast(`Preset "${trimmed}" saved`);
+    },
+    [activeTab, headerPresets, syncHeaderPresets]
+  );
+
+  const deleteHeaderPreset = useCallback(
+    (id: string) => syncHeaderPresets(headerPresets.filter((p) => p.id !== id)),
+    [headerPresets, syncHeaderPresets]
   );
 
   const importPostmanCollection = useCallback(
@@ -2285,6 +2462,24 @@ export default function RestClientPage() {
                                     {renamingRequestId !== request.id && (
                                       <button
                                         type="button"
+                                        onClick={() =>
+                                          setRequestTransferDialog({
+                                            mode: 'move',
+                                            sourceCollectionId: collection.id,
+                                            requestId: request.id,
+                                            targetCollectionId:
+                                              collections.find((c) => c.id !== collection.id)?.id ?? collection.id,
+                                          })
+                                        }
+                                        className="p-1 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-[#5b5bff] group-hover:opacity-100"
+                                        title="Move / copy to collection"
+                                      >
+                                        <ArrowRightLeft className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                    {renamingRequestId !== request.id && (
+                                      <button
+                                        type="button"
                                         onClick={() => {
                                           setRenamingRequestId(request.id);
                                           setRenameValue(request.name);
@@ -2904,8 +3099,84 @@ export default function RestClientPage() {
                       value="headers"
                       className="m-0 flex flex-1 min-h-0 flex-col p-4 overflow-hidden outline-none"
                     >
-                      <div className="mb-3 text-[11px] font-bold tracking-wide text-gray-500 dark:text-slate-400">
-                        Headers
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="text-[11px] font-bold tracking-wide text-gray-500 dark:text-slate-400">
+                          Headers
+                        </span>
+                        <div className="relative" ref={headerPresetsRef}>
+                          <button
+                            type="button"
+                            onClick={() => setHeaderPresetsOpen((o) => !o)}
+                            className="flex items-center gap-1.5 rounded border border-gray-300 dark:border-[#333] bg-gray-100 dark:bg-[#252525] px-2 py-1 text-[11px] text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-[#2e2e2e]"
+                          >
+                            <BookMarked className="h-3.5 w-3.5" /> Presets
+                          </button>
+                          {headerPresetsOpen && (
+                            <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] shadow-lg">
+                              <div className="max-h-48 overflow-y-auto">
+                                {headerPresets.length === 0 && (
+                                  <div className="px-3 py-2 text-[11px] text-gray-400 dark:text-slate-500">
+                                    No presets saved
+                                  </div>
+                                )}
+                                {headerPresets.map((preset) => (
+                                  <div
+                                    key={preset.id}
+                                    className="group flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#252525]"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => applyHeaderPreset(preset)}
+                                      className="flex-1 text-left text-[12px] text-gray-700 dark:text-slate-300 hover:text-[#5b5bff]"
+                                    >
+                                      {preset.name}
+                                      <span className="ml-1 text-[10px] text-gray-400">({preset.headers.length})</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteHeaderPreset(preset.id)}
+                                      className="ml-2 p-1 text-gray-400 opacity-0 hover:text-red-400 group-hover:opacity-100"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="border-t border-gray-200 dark:border-[#2a2a2a] p-2">
+                                {savingPreset ? (
+                                  <div className="flex gap-1">
+                                    <Input
+                                      autoFocus
+                                      placeholder="Preset name"
+                                      value={newPresetName}
+                                      onChange={(e) => setNewPresetName(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveHeaderPreset(newPresetName);
+                                        if (e.key === 'Escape') setSavingPreset(false);
+                                      }}
+                                      className="h-7 flex-1 border-gray-300 dark:border-[#333] bg-gray-50 dark:bg-[#252525] text-xs"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => saveHeaderPreset(newPresetName)}
+                                      className="rounded bg-[#5b5bff] px-2 py-1 text-[11px] text-white hover:bg-[#4a4aff]"
+                                    >
+                                      Save
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSavingPreset(true)}
+                                    className="flex w-full items-center gap-1.5 text-[11px] text-gray-500 dark:text-slate-500 hover:text-[#5b5bff]"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" /> Save current as preset
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <KeyValueEditor
                         items={activeTab?.headers ?? [createKeyValue()]}
@@ -2960,6 +3231,11 @@ export default function RestClientPage() {
                               }))
                             }
                             addLabel={activeTab.bodyType === 'form-data' ? 'Add form field' : 'Add encoded field'}
+                            showFileType={activeTab.bodyType === 'form-data'}
+                            onFileChange={(id, file) => {
+                              if (file) uploadedFilesRef.current.set(id, file);
+                              else uploadedFilesRef.current.delete(id);
+                            }}
                           />
                         </div>
                       ) : (
@@ -3234,6 +3510,17 @@ export default function RestClientPage() {
                             <button
                               type="button"
                               onClick={() => {
+                                setResponseBodySearchOpen((o) => !o);
+                                if (responseBodySearchOpen) setResponseBodySearch('');
+                              }}
+                              className={`rounded border p-2 transition-colors ${responseBodySearchOpen ? 'border-[#5b5bff] bg-[#5b5bff]/10 text-[#5b5bff]' : 'border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}
+                              title="Search response body"
+                            >
+                              <Search className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
                                 const contentType = successfulResponse.headers['content-type'] ?? '';
                                 const ext = contentType.includes('json')
                                   ? '.json'
@@ -3272,6 +3559,41 @@ export default function RestClientPage() {
                     </div>
 
                     <div className="flex flex-1 flex-col overflow-hidden bg-gray-50 dark:bg-[#111111]">
+                      {responseBodySearchOpen && successfulResponse && (
+                        <div className="flex items-center gap-2 border-b border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] px-3 py-2">
+                          <Search className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                          <Input
+                            autoFocus
+                            placeholder="Search in response…"
+                            value={responseBodySearch}
+                            onChange={(e) => setResponseBodySearch(e.target.value)}
+                            className="h-7 flex-1 border-0 bg-transparent text-xs focus-visible:ring-0 focus-visible:ring-offset-0"
+                          />
+                          {responseBodySearch && (
+                            <span className="shrink-0 text-[10px] text-gray-400">
+                              {(() => {
+                                if (!responseBodySearch.trim()) return null;
+                                const regex = new RegExp(
+                                  responseBodySearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+                                  'gi'
+                                );
+                                const matches = responsePreview.match(regex);
+                                return `${matches?.length ?? 0} match${matches?.length === 1 ? '' : 'es'}`;
+                              })()}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResponseBodySearchOpen(false);
+                              setResponseBodySearch('');
+                            }}
+                            className="p-1 text-gray-400 hover:text-gray-600"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                       <TabsContent value="response-body" className="m-0 flex-1 overflow-y-auto p-0 outline-none">
                         {isErrorResponse(activeTab.response) ? (
                           <div className="m-4 flex items-start gap-3 rounded border border-[#ff5b5b]/30 bg-red-50 dark:bg-red-900/20 p-4 text-[#ff5b5b]">
@@ -3322,6 +3644,14 @@ export default function RestClientPage() {
                               )}
                             </div>
                           </div>
+                        ) : responseBodySearchOpen && responseBodySearch.trim() ? (
+                          <pre className="h-full overflow-auto bg-gray-50 dark:bg-[#111] p-4 font-mono text-[12px] leading-relaxed text-gray-700 dark:text-[#b5b5b5] selection:bg-[#5b5bff]/30">
+                            {responsePreview.split('\n').map((line, i) => (
+                              <div key={i}>
+                                <HighlightedText text={line} query={responseBodySearch} />
+                              </div>
+                            ))}
+                          </pre>
                         ) : responseBodyMode === 'pretty' && successfulResponse?.isJson ? (
                           <PrettyJsonView json={responsePreview} />
                         ) : (
@@ -3719,6 +4049,73 @@ export default function RestClientPage() {
               Save request
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move / Copy request dialog */}
+      <Dialog open={!!requestTransferDialog} onOpenChange={(open) => !open && setRequestTransferDialog(null)}>
+        <DialogContent className="max-w-sm border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e]">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold text-gray-900 dark:text-white">
+              Move / Copy Request
+            </DialogTitle>
+          </DialogHeader>
+          {requestTransferDialog && (
+            <div className="space-y-4 pt-2">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-gray-500 dark:text-slate-400">Target Collection</label>
+                <Select
+                  value={requestTransferDialog.targetCollectionId}
+                  onValueChange={(v) => setRequestTransferDialog((d) => (d ? { ...d, targetCollectionId: v } : null))}
+                >
+                  <SelectTrigger className="h-8 border-gray-300 dark:border-[#333] bg-gray-100 dark:bg-[#252525] text-xs text-gray-700 dark:text-slate-300 focus:ring-[#5b5bff]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e]">
+                    {collections.map((c) => (
+                      <SelectItem key={c.id} value={c.id} className="text-xs text-gray-700 dark:text-slate-300">
+                        {c.name}
+                        {c.id === requestTransferDialog.sourceCollectionId && ' (current)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  onClick={() =>
+                    transferRequest(
+                      requestTransferDialog.sourceCollectionId,
+                      requestTransferDialog.requestId,
+                      requestTransferDialog.targetCollectionId,
+                      'move'
+                    )
+                  }
+                  disabled={requestTransferDialog.targetCollectionId === requestTransferDialog.sourceCollectionId}
+                  className="flex-1 bg-[#5b5bff] hover:bg-[#4b4be6] text-xs"
+                >
+                  Move
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    transferRequest(
+                      requestTransferDialog.sourceCollectionId,
+                      requestTransferDialog.requestId,
+                      requestTransferDialog.targetCollectionId,
+                      'copy'
+                    )
+                  }
+                  disabled={requestTransferDialog.targetCollectionId === requestTransferDialog.sourceCollectionId}
+                  className="flex-1 border-gray-300 dark:border-[#333] text-xs"
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

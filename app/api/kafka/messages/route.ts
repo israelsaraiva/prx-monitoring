@@ -38,8 +38,26 @@ export async function GET(request: NextRequest) {
       } catch {
         // Ignore errors sending test message
       }
+
+      // Send a keepalive comment every 15 seconds to prevent proxy/load-balancer idle timeouts
+      const keepaliveInterval = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(': keepalive\n\n'));
+        } catch {
+          clearInterval(keepaliveInterval);
+        }
+      }, 15000);
+
+      // Store interval reference on the controller so cancel() can clear it
+      (controller as unknown as { _keepaliveInterval: ReturnType<typeof setInterval> })._keepaliveInterval =
+        keepaliveInterval;
     },
-    cancel() {
+    cancel(controller) {
+      const interval = (controller as unknown as { _keepaliveInterval?: ReturnType<typeof setInterval> })
+        ._keepaliveInterval;
+      if (interval) {
+        clearInterval(interval);
+      }
       messageStreams.delete(consumerId);
       messageQueues.delete(consumerId);
     },

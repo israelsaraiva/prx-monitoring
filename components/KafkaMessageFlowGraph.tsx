@@ -24,6 +24,10 @@ import { toast } from 'sonner';
 
 interface KafkaMessageFlowGraphProps {
   messages: KafkaMessage[];
+  searchQuery?: string;
+  topicFilter?: string | null;
+  onResendMessage?: (message: KafkaMessage) => void;
+  onUseMessageForSend?: (message: KafkaMessage) => void;
 }
 
 interface FlowGroup {
@@ -33,15 +37,22 @@ interface FlowGroup {
   lastMessage: Date;
 }
 
-export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) {
+export function KafkaMessageFlowGraph({
+  messages,
+  searchQuery,
+  topicFilter,
+  onResendMessage,
+  onUseMessageForSend,
+}: KafkaMessageFlowGraphProps) {
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [expandedRawMessages, setExpandedRawMessages] = useState<Set<string>>(new Set());
   const [expandedFlowIds, setExpandedFlowIds] = useState<Set<string>>(new Set());
 
   const flowGroups = useMemo(() => {
+    const filteredMessages = topicFilter ? messages.filter((m) => m.topic === topicFilter) : messages;
     const groups = new Map<string, KafkaMessage[]>();
 
-    messages.forEach((msg) => {
+    filteredMessages.forEach((msg) => {
       if (!groups.has(msg.flowId)) {
         groups.set(msg.flowId, []);
       }
@@ -60,7 +71,7 @@ export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) 
     });
 
     return result.sort((a, b) => b.lastMessage.getTime() - a.lastMessage.getTime());
-  }, [messages]);
+  }, [messages, topicFilter]);
 
   if (messages.length === 0) {
     return (
@@ -328,20 +339,7 @@ export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) 
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <Button
-                                    onClick={() => {
-                                      if (typeof window !== 'undefined') {
-                                        const win = window as unknown as {
-                                          useKafkaMessageForSend?: (
-                                            topic: string,
-                                            key: string | null,
-                                            value: string
-                                          ) => void;
-                                        };
-                                        if (win.useKafkaMessageForSend) {
-                                          win.useKafkaMessageForSend(msg.topic, msg.key, msg.value);
-                                        }
-                                      }
-                                    }}
+                                    onClick={() => onUseMessageForSend?.(msg)}
                                     variant="outline"
                                     size="sm"
                                     className="h-7 text-xs"
@@ -350,16 +348,7 @@ export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) 
                                     Use for Send
                                   </Button>
                                   <Button
-                                    onClick={() => {
-                                      if (typeof window !== 'undefined') {
-                                        const win = window as unknown as {
-                                          resendKafkaMessage?: (message: KafkaMessage) => void;
-                                        };
-                                        if (win.resendKafkaMessage) {
-                                          win.resendKafkaMessage(msg);
-                                        }
-                                      }
-                                    }}
+                                    onClick={() => onResendMessage?.(msg)}
                                     variant="outline"
                                     size="sm"
                                     className="h-7 text-xs"
@@ -406,6 +395,15 @@ export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) 
                                 <div className="flex items-center gap-2">
                                   <FileText className="h-3.5 w-3.5" />
                                   <span>Message Details</span>
+                                  {msg.flowIdSource && msg.flowIdSource !== 'none' && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[9px] px-1 py-0 h-4 border-slate-300/60 text-slate-500 dark:border-slate-600/60 dark:text-slate-400"
+                                      title={`Flow ID resolved from: ${msg.flowIdSource}`}
+                                    >
+                                      id via {msg.flowIdSource}
+                                    </Badge>
+                                  )}
                                 </div>
                                 <span
                                   className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
@@ -437,13 +435,14 @@ export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) 
                                         {
                                           id: msg.id,
                                           flowId: msg.flowId,
+                                          flowIdSource: msg.flowIdSource,
                                           timestamp: msg.timestamp.toISOString(),
                                           topic: msg.topic,
                                           partition: msg.partition,
                                           offset: msg.offset,
                                           key: msg.key,
+                                          headers: msg.headers,
                                           value: parsedValue,
-                                          flowIdSource: msg.flowIdSource,
                                           containerName: msg.containerName,
                                           level: msg.level,
                                           rawMessage: parsedRawMessage,
@@ -502,6 +501,23 @@ export function KafkaMessageFlowGraph({ messages }: KafkaMessageFlowGraphProps) 
                                             {formatMessageContent(msg.rawMessage)}
                                           </div>
                                         )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {msg.headers && Object.keys(msg.headers).length > 0 && (
+                                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/40">
+                                      <div className="text-[10px] font-medium text-muted-foreground mb-2">Headers</div>
+                                      <div className="rounded-md border border-slate-200/60 dark:border-slate-700/40 bg-slate-50/50 dark:bg-slate-800/30 divide-y divide-slate-200/60 dark:divide-slate-700/40 overflow-hidden">
+                                        {Object.entries(msg.headers).map(([k, v]) => (
+                                          <div key={k} className="flex items-start gap-2 px-3 py-1.5 text-xs">
+                                            <span className="font-mono font-medium text-slate-600 dark:text-slate-400 flex-shrink-0">
+                                              {k}
+                                            </span>
+                                            <span className="font-mono text-slate-700 dark:text-slate-300 break-all">
+                                              {v}
+                                            </span>
+                                          </div>
+                                        ))}
                                       </div>
                                     </div>
                                   )}

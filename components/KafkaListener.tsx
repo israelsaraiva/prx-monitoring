@@ -21,6 +21,7 @@ interface KafkaListenerProps {
   setIsConnected: (connected: boolean) => void;
   onDisconnect: () => void;
   onClear: () => void;
+  onResendMessage?: (message: KafkaMessage) => void;
   onUseMessageForSend?: (message: KafkaMessage) => void;
 }
 
@@ -35,6 +36,7 @@ export function KafkaListener({
   setIsConnected,
   onDisconnect,
   onClear,
+  onResendMessage,
   onUseMessageForSend,
 }: KafkaListenerProps) {
   const consumerIdRef = useRef<string | null>(null);
@@ -43,6 +45,10 @@ export function KafkaListener({
 
   // Connection loading state
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+
+  // fromBeginning option
+  const [fromBeginning, setFromBeginning] = useState(false);
 
   // Broker configuration management
   const [savedConfigs, setSavedConfigs] = useState<BrokerConfig[]>([]);
@@ -206,6 +212,7 @@ export function KafkaListener({
       let connectionTestReceived = false;
       let connectionResolve: (() => void) | null = null;
       let connectionReject: ((error: Error) => void) | null = null;
+      let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
 
       eventSource.onmessage = (event) => {
         try {
@@ -213,6 +220,10 @@ export function KafkaListener({
 
           if (data.type === 'connection-test') {
             connectionTestReceived = true;
+            if (connectionTimeout) {
+              clearTimeout(connectionTimeout);
+              connectionTimeout = null;
+            }
             if (connectionResolve) {
               connectionResolve();
             }
@@ -229,6 +240,7 @@ export function KafkaListener({
             offset: data.offset,
             key: data.key || null,
             value: data.value || '',
+            headers: data.headers && Object.keys(data.headers).length > 0 ? data.headers : undefined,
             flowIdSource: data.flowIdSource || 'none',
           };
 
@@ -244,10 +256,14 @@ export function KafkaListener({
             connectionReject(new Error('EventSource connection failed'));
           }
           setIsConnecting(false);
+          setIsReconnecting(false);
           setIsConnected(false);
           toast.error('Connection Lost', {
             description: 'Connection to message stream was lost. Please reconnect.',
           });
+        } else if (eventSource.readyState === EventSource.CONNECTING && isConnected) {
+          // SSE is auto-reconnecting — show indicator but don't treat as fatal
+          setIsReconnecting(true);
         }
       };
 
@@ -257,7 +273,7 @@ export function KafkaListener({
         connectionResolve = resolve;
         connectionReject = reject;
 
-        const timeout = setTimeout(() => {
+        connectionTimeout = setTimeout(() => {
           if (!connectionTestReceived) {
             eventSource.close();
             reject(new Error('EventSource connection timeout - did not receive connection-test message'));
@@ -266,7 +282,10 @@ export function KafkaListener({
 
         // Check if we already received the test message (unlikely but possible)
         if (connectionTestReceived) {
-          clearTimeout(timeout);
+          if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+            connectionTimeout = null;
+          }
           resolve();
         }
       });
@@ -275,7 +294,7 @@ export function KafkaListener({
       const response = await fetch('/api/kafka/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ broker, topics, consumerId }),
+        body: JSON.stringify({ broker, topics, consumerId, fromBeginning }),
       });
 
       if (!response.ok) {
@@ -307,11 +326,13 @@ export function KafkaListener({
 
       setIsConnected(true);
       setIsConnecting(false);
+      setIsReconnecting(false);
       toast.success('Connected', {
-        description: 'Successfully connected to Kafka broker',
+        description: `Successfully connected to Kafka broker${fromBeginning ? ' (from beginning)' : ''}`,
       });
     } catch (error) {
       setIsConnecting(false);
+      setIsReconnecting(false);
       setIsConnected(false);
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -348,6 +369,7 @@ export function KafkaListener({
       eventSourceRef.current = null;
     }
     setIsConnected(false);
+    setIsReconnecting(false);
     onDisconnect();
     toast.info('Disconnected', {
       description: 'Kafka consumer disconnected',
@@ -372,7 +394,7 @@ export function KafkaListener({
             topic: message.topic,
             key: message.key || null,
             value: message.value,
-            headers: null,
+            headers: message.headers || null,
           }),
         });
 
@@ -407,19 +429,6 @@ export function KafkaListener({
     };
   }, []);
 
-  // Expose function to resend message via window (for KafkaMessageFlowGraph)
-  useEffect(() => {
-    (window as { resendKafkaMessage?: (message: KafkaMessage) => void }).resendKafkaMessage = (
-      message: KafkaMessage
-    ) => {
-      resendMessage(message);
-    };
-
-    return () => {
-      delete (window as { resendKafkaMessage?: (message: KafkaMessage) => void }).resendKafkaMessage;
-    };
-  }, [broker, resendMessage]);
-
   return (
     <div className="flex flex-col h-full bg-transparent">
       {/* Title Header */}
@@ -432,12 +441,18 @@ export function KafkaListener({
         </div>
         <div
           className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold ${
-            isConnected
-              ? 'bg-teal-100/80 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800'
-              : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700/50'
+            isReconnecting
+              ? 'bg-yellow-100/80 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800'
+              : isConnected
+                ? 'bg-teal-100/80 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800'
+                : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700/50'
           }`}
         >
-          {isConnected ? (
+          {isReconnecting ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" /> Reconnecting...
+            </>
+          ) : isConnected ? (
             <>
               <div className="h-2 w-2 rounded-full bg-teal-500 dark:bg-teal-400 animate-pulse" /> Connected
             </>
@@ -607,6 +622,39 @@ export function KafkaListener({
               disabled={isConnected}
               className="w-full h-10 px-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-colors disabled:opacity-50 shadow-inner"
             />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              id="from-beginning"
+              role="checkbox"
+              aria-checked={fromBeginning}
+              onClick={() => !isConnected && setFromBeginning((v) => !v)}
+              disabled={isConnected}
+              className={`h-4 w-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-50 ${
+                fromBeginning
+                  ? 'bg-teal-600 border-teal-600'
+                  : 'bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700'
+              }`}
+            >
+              {fromBeginning && (
+                <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 10 10" fill="none">
+                  <path
+                    d="M2 5l2.5 2.5L8 3"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
+            <label
+              htmlFor="from-beginning"
+              onClick={() => !isConnected && setFromBeginning((v) => !v)}
+              className={`text-xs text-slate-700 dark:text-slate-300 select-none ${isConnected ? 'opacity-50' : 'cursor-pointer'}`}
+            >
+              Consume from beginning
+            </label>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-export type KeyValue = { key: string; value: string; active: boolean; id: number };
+export type KeyValue = { key: string; value: string; active: boolean; id: number; fileType?: 'text' | 'file' };
 
 export type AuthConfig =
   | { type: 'none' }
@@ -78,11 +78,18 @@ export interface Settings {
   localProxyUrl: string;
 }
 
+export interface HeaderPreset {
+  id: string;
+  name: string;
+  headers: KeyValue[];
+}
+
 const COLLECTIONS_KEY = 'rest-client:collections';
 const ENVIRONMENTS_KEY = 'rest-client:environments';
 const ACTIVE_ENVIRONMENT_ID_KEY = 'rest-client:active-environment-id';
 const HISTORY_KEY = 'rest-client:history';
 const SETTINGS_KEY = 'rest-client:settings';
+const HEADER_PRESETS_KEY = 'rest-client:header-presets';
 const DEFAULT_SETTINGS: Settings = { timeout: 30000, sslVerification: true, useServerProxy: false, localProxyUrl: '' };
 
 function readStorage<T>(key: string, fallback: T): T {
@@ -217,4 +224,13 @@ export function interpolateEnv(text: string, env: Environment | null): string {
     const resolvedValue = activeVariables.get(variableName.trim());
     return resolvedValue ?? match;
   });
+}
+
+export function getHeaderPresets(): HeaderPreset[] {
+  const presets = readStorage<HeaderPreset[]>(HEADER_PRESETS_KEY, []);
+  return Array.isArray(presets) ? presets : [];
+}
+
+export function saveHeaderPresets(presets: HeaderPreset[]) {
+  writeStorage(HEADER_PRESETS_KEY, Array.isArray(presets) ? presets : []);
 }

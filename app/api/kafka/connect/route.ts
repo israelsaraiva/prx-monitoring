@@ -14,7 +14,7 @@ const CONNECTION_TIMEOUT = 10000;
 
 export async function POST(request: NextRequest) {
   try {
-    const { broker, topics, consumerId } = await request.json();
+    const { broker, topics, consumerId, fromBeginning = false } = await request.json();
 
     if (!broker || !topics || !consumerId) {
       return Response.json({ error: 'Missing required fields: broker, topics, consumerId' }, { status: 400 });
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await consumer.subscribe({ topics: topicList, fromBeginning: false });
+      await consumer.subscribe({ topics: topicList, fromBeginning });
     } catch (error) {
       await consumer.disconnect();
       return Response.json(
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
               key: message.key?.toString() || null,
               value: message.value?.toString() || '',
               headers: message.headers
-                ? Object.fromEntries(Object.entries(message.headers).map(([k, v]) => [k, v?.toString()]))
+                ? Object.fromEntries(Object.entries(message.headers).map(([k, v]) => [k, v?.toString() ?? '']))
                 : {},
               timestamp: Date.now(),
               flowId,
@@ -209,12 +209,6 @@ export async function POST(request: NextRequest) {
             sendKafkaMessage(consumerId, kafkaMessage);
           } catch (error) {
             console.error('Error processing Kafka message:', error);
-          }
-        },
-        eachBatch: async ({ batch }) => {
-          // Check if this consumer is still in the map (not stopped)
-          if (!consumers.has(consumerId)) {
-            return;
           }
         },
       })

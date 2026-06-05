@@ -8,17 +8,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
-import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-
 import { KafkaMessage } from '@/lib/types/kafka';
+import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 const STORAGE_KEYS = {
   kafkaBroker: 'kafka-broker',
   kafkaTopics: 'kafka-topics',
   kafkaMessages: 'kafka-messages',
 };
+
+const MAX_STORED_MESSAGES = 200;
 
 export default function KafkaPage() {
   // Kafka Listener state
@@ -27,7 +29,15 @@ export default function KafkaPage() {
   const [kafkaMessages, setKafkaMessages] = useState<KafkaMessage[]>([]);
   const [isKafkaConnected, setIsKafkaConnected] = useState(false);
   const [kafkaSearchQuery, setKafkaSearchQuery] = useState('');
+  const [topicFilter, setTopicFilter] = useState<string | null>(null);
   const [isSendMessageExpanded, setIsSendMessageExpanded] = useState(false);
+
+  // Pending message for send form (replaces window global)
+  const [pendingSendMessage, setPendingSendMessage] = useState<KafkaMessage | null>(null);
+  const resendBrokerRef = useRef(kafkaBroker);
+  useEffect(() => {
+    resendBrokerRef.current = kafkaBroker;
+  }, [kafkaBroker]);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -75,13 +85,14 @@ export default function KafkaPage() {
     }
   }, [kafkaTopics]);
 
-  // Save Kafka messages to localStorage
+  // Save Kafka messages to localStorage (capped at MAX_STORED_MESSAGES)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       if (kafkaMessages.length > 0) {
         try {
+          const toStore = kafkaMessages.slice(0, MAX_STORED_MESSAGES);
           const serialized = JSON.stringify(
-            kafkaMessages.map((msg) => ({
+            toStore.map((msg) => ({
               ...msg,
               timestamp: msg.timestamp.toISOString(),
             }))
@@ -96,6 +107,12 @@ export default function KafkaPage() {
     }
   }, [kafkaMessages]);
 
+  // Derive unique topic list from received messages
+  const uniqueTopics = useMemo(() => {
+    const topics = new Set(kafkaMessages.map((m) => m.topic));
+    return Array.from(topics).sort();
+  }, [kafkaMessages]);
+
   // Kafka handlers
   const handleKafkaDisconnect = () => {
     setIsKafkaConnected(false);
@@ -106,12 +123,78 @@ export default function KafkaPage() {
     setKafkaTopics('');
     setKafkaMessages([]);
     setKafkaSearchQuery('');
+    setTopicFilter(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem(STORAGE_KEYS.kafkaBroker);
       localStorage.removeItem(STORAGE_KEYS.kafkaTopics);
       localStorage.removeItem(STORAGE_KEYS.kafkaMessages);
     }
   };
+
+  const handleResendMessage = useCallback(
+    async (message: KafkaMessage) => {
+      if (!kafkaBroker) {
+        toast.error('Missing Broker', { description: 'Please provide a broker endpoint' });
+        return;
+      }
+      try {
+        const response = await fetch('/api/kafka/produce', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            broker: kafkaBroker,
+            topic: message.topic,
+            key: message.key || null,
+            value: message.value,
+            headers: message.headers || null,
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to resend message');
+        toast.success('Message Resent', {
+          description: `Message resent to ${message.topic} (partition: ${result.partition}, offset: ${result.offset})`,
+        });
+      } catch (error) {
+        toast.error('Resend Failed', { description: error instanceof Error ? error.message : 'Unknown error' });
+      }
+    },
+    [kafkaBroker]
+  );
+
+  const handleUseMessageForSend = useCallback((message: KafkaMessage) => {
+    setPendingSendMessage(message);
+    setIsSendMessageExpanded(true);
+  }, []);
+
+  const handleExportAll = useCallback(() => {
+    const data = kafkaMessages.map((msg) => ({
+      id: msg.id,
+      flowId: msg.flowId,
+      flowIdSource: msg.flowIdSource,
+      timestamp: msg.timestamp.toISOString(),
+      topic: msg.topic,
+      partition: msg.partition,
+      offset: msg.offset,
+      key: msg.key,
+      headers: msg.headers,
+      value: (() => {
+        try {
+          return JSON.parse(msg.value);
+        } catch {
+          return msg.value;
+        }
+      })(),
+    }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `kafka-messages-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [kafkaMessages]);
 
   // Filter Kafka messages based on search query
   const filteredKafkaMessages = useMemo(() => {
@@ -139,6 +222,14 @@ export default function KafkaPage() {
       // Search in key if present
       if (msg.key && msg.key.toLowerCase().includes(query)) {
         return true;
+      }
+
+      // Search in headers
+      if (msg.headers) {
+        const headersString = JSON.stringify(msg.headers).toLowerCase();
+        if (headersString.includes(query)) {
+          return true;
+        }
       }
 
       // Try to parse JSON and search in parsed content
@@ -210,7 +301,8 @@ export default function KafkaPage() {
                 setIsConnected={setIsKafkaConnected}
                 onDisconnect={handleKafkaDisconnect}
                 onClear={handleKafkaClear}
-                onUseMessageForSend={() => {}}
+                onResendMessage={handleResendMessage}
+                onUseMessageForSend={handleUseMessageForSend}
               />
             </div>
             {/* Message Flow Visualization and Send Message - Right Side */}
@@ -243,7 +335,7 @@ export default function KafkaPage() {
                               className="text-xs sm:text-sm border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm"
                             >
                               {filteredKafkaMessages.length} message{filteredKafkaMessages.length !== 1 ? 's' : ''}
-                              {kafkaSearchQuery && ` (of ${kafkaMessages.length})`}
+                              {(kafkaSearchQuery || topicFilter) && ` (of ${kafkaMessages.length})`}
                             </Badge>
                             <Badge
                               variant="outline"
@@ -255,24 +347,66 @@ export default function KafkaPage() {
                               }{' '}
                               linked
                             </Badge>
+                            <Button
+                              onClick={handleExportAll}
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs border-teal-300/60 text-teal-700 dark:border-teal-700/60 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/20 hover:bg-teal-100 dark:hover:bg-teal-900/30"
+                              title="Export all messages as JSON"
+                            >
+                              <Download className="h-3 w-3 mr-1" />
+                              Export All
+                            </Button>
                           </div>
                         )}
                       </div>
                       {kafkaMessages.length > 0 && (
-                        <div className="mt-4">
+                        <div className="mt-4 space-y-3">
+                          {/* Topic filter chips */}
+                          {uniqueTopics.length > 1 && (
+                            <div className="flex flex-wrap gap-2 items-center">
+                              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                                Topic:
+                              </span>
+                              <button
+                                onClick={() => setTopicFilter(null)}
+                                className={`px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${
+                                  topicFilter === null
+                                    ? 'bg-teal-600 text-white border-teal-600'
+                                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-teal-400'
+                                }`}
+                              >
+                                All
+                              </button>
+                              {uniqueTopics.map((topic) => (
+                                <button
+                                  key={topic}
+                                  onClick={() => setTopicFilter(topicFilter === topic ? null : topic)}
+                                  className={`px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${
+                                    topicFilter === topic
+                                      ? 'bg-teal-600 text-white border-teal-600'
+                                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-teal-400'
+                                  }`}
+                                >
+                                  {topic}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <div className="relative">
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               type="text"
-                              placeholder="Search messages by content, topic, flowId, or key..."
+                              placeholder="Search messages by content, topic, flowId, key, or headers..."
                               value={kafkaSearchQuery}
                               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setKafkaSearchQuery(e.target.value)}
                               className="pl-10 h-10"
                             />
                           </div>
-                          {kafkaSearchQuery && (
-                            <p className="text-xs text-muted-foreground mt-2">
+                          {(kafkaSearchQuery || topicFilter) && (
+                            <p className="text-xs text-muted-foreground">
                               Showing {filteredKafkaMessages.length} of {kafkaMessages.length} messages
+                              {topicFilter && ` · topic: ${topicFilter}`}
                             </p>
                           )}
                         </div>
@@ -280,7 +414,13 @@ export default function KafkaPage() {
                     </CardHeader>
                     <CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col">
                       <div className="flex-1 min-h-0">
-                        <KafkaMessageFlowGraph messages={filteredKafkaMessages} />
+                        <KafkaMessageFlowGraph
+                          messages={filteredKafkaMessages}
+                          searchQuery={kafkaSearchQuery}
+                          topicFilter={topicFilter}
+                          onResendMessage={handleResendMessage}
+                          onUseMessageForSend={handleUseMessageForSend}
+                        />
                       </div>
                     </CardContent>
                   </Card>
@@ -306,6 +446,7 @@ export default function KafkaPage() {
                         <SendMessageForm
                           broker={kafkaBroker}
                           defaultTopic={kafkaTopics.split(',')[0]?.trim()}
+                          pendingMessage={pendingSendMessage}
                           onExpand={() => setIsSendMessageExpanded(true)}
                         />
                       </CardContent>

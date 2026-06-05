@@ -7,6 +7,7 @@ export interface KafkaMessage {
   offset: string;
   key: string | null;
   value: string;
+  headers?: Record<string, string>;
   flowIdSource?: string;
   containerName?: string;
   level?: string;

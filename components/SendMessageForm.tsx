@@ -5,29 +5,55 @@ import { CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { KafkaMessage } from '@/lib/types/kafka';
 import { Loader2, Send, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 interface SendMessageFormProps {
   broker: string;
   defaultTopic?: string;
+  pendingMessage?: KafkaMessage | null;
   onMessageSent?: () => void;
   onExpand?: () => void;
 }
 
-export function SendMessageForm({ broker, defaultTopic, onMessageSent, onExpand }: SendMessageFormProps) {
+export function SendMessageForm({
+  broker,
+  defaultTopic,
+  pendingMessage,
+  onMessageSent,
+  onExpand,
+}: SendMessageFormProps) {
   const [sendTopic, setSendTopic] = useState(defaultTopic || '');
   const [sendKey, setSendKey] = useState('');
   const [sendValue, setSendValue] = useState('');
   const [sendHeaders, setSendHeaders] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const lastPendingMessageId = useRef<string | null>(null);
 
   useEffect(() => {
     if (defaultTopic && !sendTopic) {
       setSendTopic(defaultTopic);
     }
   }, [defaultTopic, sendTopic]);
+
+  // Load pending message from parent (replaces window global)
+  useEffect(() => {
+    if (pendingMessage && pendingMessage.id !== lastPendingMessageId.current) {
+      lastPendingMessageId.current = pendingMessage.id;
+      setSendTopic(pendingMessage.topic);
+      setSendKey(pendingMessage.key || '');
+      setSendValue(formatMessageValue(pendingMessage.value));
+      if (pendingMessage.headers && Object.keys(pendingMessage.headers).length > 0) {
+        setSendHeaders(JSON.stringify(pendingMessage.headers, null, 2));
+      }
+      onExpand?.();
+      toast.info('Message Parameters Loaded', {
+        description: 'Message parameters have been loaded into the send form',
+      });
+    }
+  }, [pendingMessage, onExpand]);
 
   const sendMessage = async () => {
     if (!broker || !sendTopic || !sendValue) {
@@ -91,31 +117,6 @@ export function SendMessageForm({ broker, defaultTopic, onMessageSent, onExpand 
       description: 'Send message form has been cleared',
     });
   };
-
-  useEffect(() => {
-    const loadMessage = (topic: string, key: string | null, value: string) => {
-      setSendTopic(topic);
-      setSendKey(key || '');
-      setSendValue(formatMessageValue(value));
-      onExpand?.();
-      toast.info('Message Parameters Loaded', {
-        description: 'Message parameters have been loaded into the send form',
-      });
-    };
-
-    if (typeof window !== 'undefined') {
-      (
-        window as { useKafkaMessageForSend?: (topic: string, key: string | null, value: string) => void }
-      ).useKafkaMessageForSend = loadMessage;
-    }
-
-    return () => {
-      if (typeof window !== 'undefined') {
-        delete (window as { useKafkaMessageForSend?: (topic: string, key: string | null, value: string) => void })
-          .useKafkaMessageForSend;
-      }
-    };
-  }, [onExpand]);
 
   return (
     <div className="flex flex-col h-full bg-transparent overflow-hidden -mx-4 -my-4 sm:-mx-6 sm:-my-6 lg:-mx-6 lg:-my-6">
