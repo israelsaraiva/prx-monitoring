@@ -9,6 +9,7 @@ import {
   Clock,
   Code,
   Copy,
+  CopyPlus,
   Download,
   Folder,
   Globe,
@@ -344,6 +345,91 @@ function guessBodyType(raw: string, language?: string): BodyType {
   return 'text';
 }
 
+const TABS_STORAGE_KEY = 'rest-client:tabs';
+
+function persistTabs(tabs: RequestTab[], activeTabId: string) {
+  try {
+    const data = tabs.map(({ response: _r, loading: _l, ...rest }) => rest);
+    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({ tabs: data, activeTabId }));
+  } catch {
+    // ignore
+  }
+}
+
+function loadPersistedTabs(): { tabs: Omit<RequestTab, 'response' | 'loading'>[]; activeTabId: string } | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem(TABS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { tabs: Omit<RequestTab, 'response' | 'loading'>[]; activeTabId: string };
+    if (!Array.isArray(parsed?.tabs) || parsed.tabs.length === 0) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+const JSON_LINE_KEY_RE = /^(\s*)("(?:[^"\\]|\\.)*")(\s*:\s*)(.*)$/;
+const JSON_PRETTY_SIZE_LIMIT = 300_000; // ~300 KB – fall back to raw above this
+
+function PrettyJsonValue({ value }: { value: string }) {
+  const v = value.trim();
+  if (v === 'null') return <span style={{ color: '#808080' }}>null</span>;
+  if (v === 'true' || v === 'false') return <span style={{ color: '#79c0ff' }}>{v}</span>;
+  if (/^-?\d/.test(v)) return <span style={{ color: '#f08d49' }}>{v}</span>;
+  if (v.startsWith('"')) return <span style={{ color: '#98c379' }}>{v}</span>;
+  return <span style={{ color: '#b0b0b0' }}>{value}</span>;
+}
+
+function PrettyJsonLine({ line }: { line: string }) {
+  const m = JSON_LINE_KEY_RE.exec(line);
+  if (m) {
+    const [, indent, key, sep, rest] = m;
+    const hasComma = rest.endsWith(',');
+    const value = hasComma ? rest.slice(0, -1) : rest;
+    return (
+      <>
+        {indent}
+        <span style={{ color: '#c792ea' }}>{key}</span>
+        <span style={{ color: '#676e95' }}>{sep}</span>
+        <PrettyJsonValue value={value} />
+        {hasComma && <span style={{ color: '#676e95' }}>,</span>}
+      </>
+    );
+  }
+  const indent = line.slice(0, line.length - line.trimStart().length);
+  const content = line.trimStart().trimEnd();
+  const hasComma = content.endsWith(',');
+  const base = hasComma ? content.slice(0, -1) : content;
+  return (
+    <>
+      {indent}
+      <PrettyJsonValue value={base} />
+      {hasComma && <span style={{ color: '#676e95' }}>,</span>}
+    </>
+  );
+}
+
+function PrettyJsonView({ json }: { json: string }) {
+  if (json.length > JSON_PRETTY_SIZE_LIMIT) {
+    return (
+      <pre className="h-full overflow-auto bg-gray-50 dark:bg-[#111] p-4 font-mono text-[12px] leading-relaxed text-gray-700 dark:text-[#b5b5b5] selection:bg-[#5b5bff]/30">
+        {json}
+      </pre>
+    );
+  }
+  const lines = json.split('\n');
+  return (
+    <pre className="h-full overflow-auto bg-gray-50 dark:bg-[#111] p-4 font-mono text-[12px] leading-relaxed selection:bg-[#5b5bff]/30">
+      {lines.map((line, i) => (
+        <div key={i}>
+          <PrettyJsonLine line={line} />
+        </div>
+      ))}
+    </pre>
+  );
+}
+
 function KeyValueEditor({
   items,
   setItems,
@@ -355,6 +441,9 @@ function KeyValueEditor({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(items.length);
+
+  const allActive = items.length > 0 && items.every((i) => i.active);
+  const someActive = items.some((i) => i.active);
 
   useEffect(() => {
     if (items.length > prevLengthRef.current && scrollRef.current) {
@@ -368,7 +457,18 @@ function KeyValueEditor({
       <div className="flex items-center border-b border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">
         <div className="flex-1 border-r border-gray-300 dark:border-[#2a2a2a] px-4 py-2">Key</div>
         <div className="flex-1 border-r border-gray-300 dark:border-[#2a2a2a] px-4 py-2">Value</div>
-        <div className="w-16 px-2 py-2 text-center">On</div>
+        <div className="w-16 px-2 py-2 flex items-center justify-center">
+          <input
+            type="checkbox"
+            title="Toggle all"
+            checked={allActive}
+            ref={(el) => {
+              if (el) el.indeterminate = someActive && !allActive;
+            }}
+            onChange={(e) => setItems(items.map((i) => ({ ...i, active: e.target.checked })))}
+            className="h-3.5 w-3.5 cursor-pointer rounded-sm border-gray-400 dark:border-[#444] bg-transparent text-[#5b5bff] focus:ring-[#5b5bff]"
+          />
+        </div>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto max-h-80 xl:max-h-none">
         {items.map((item, index) => (
@@ -471,11 +571,17 @@ export default function RestClientPage() {
     newCollectionName: '',
     requestName: '',
   });
+  const [renamingCollectionId, setRenamingCollectionId] = useState<string | null>(null);
+  const [renameCollectionValue, setRenameCollectionValue] = useState('');
+  const [historySearch, setHistorySearch] = useState('');
+  const [responseBodyMode, setResponseBodyMode] = useState<'pretty' | 'raw'>('pretty');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const sendMenuRef = useRef<HTMLDivElement | null>(null);
   const cancelControllerRef = useRef<AbortController | null>(null);
+  // Must be declared before the mount effect so it is false when the persist effect first fires
+  const tabHydrationRef = useRef(false);
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0], [activeTabId, tabs]);
   const activeEnvironment = useMemo(
     () => environments.find((environment) => environment.id === activeEnvironmentId) ?? null,
@@ -501,12 +607,20 @@ export default function RestClientPage() {
     saveEnvironments(nextEnvironments);
   }, []);
 
+  // Persist tabs on every change. Declared BEFORE the mount effect so that it fires
+  // first on mount (when tabHydrationRef.current is still false) and skips saving blank state.
+  useEffect(() => {
+    if (!tabHydrationRef.current) return;
+    persistTabs(tabs, activeTabId);
+  }, [tabs, activeTabId]);
+
   useEffect(() => {
     const storedCollections = getCollections();
     const storedHistory = getHistory();
     const storedEnvironments = getEnvironments();
     const storedActiveEnvironmentId = getActiveEnvironmentId();
     const storedSettings = getSettings();
+    const storedTabs = loadPersistedTabs();
 
     setCollectionsState(storedCollections);
     setHistoryState(storedHistory);
@@ -516,6 +630,17 @@ export default function RestClientPage() {
     setInlineSaveCollectionId(storedCollections[0]?.id ?? '');
     setExpandedCollections(Object.fromEntries(storedCollections.map((collection) => [collection.id, true])));
     setExpandedEnvironments(Object.fromEntries(storedEnvironments.map((environment) => [environment.id, true])));
+
+    if (storedTabs && storedTabs.tabs.length > 0) {
+      const restoredTabs = storedTabs.tabs.map((t) => ({ ...t, response: null, loading: false }));
+      const restoredActiveId = restoredTabs.some((t) => t.id === storedTabs.activeTabId)
+        ? storedTabs.activeTabId
+        : restoredTabs[0].id;
+      setTabs(restoredTabs);
+      setActiveTabId(restoredActiveId);
+    }
+
+    tabHydrationRef.current = true;
   }, []);
 
   useEffect(() => {
@@ -947,6 +1072,12 @@ export default function RestClientPage() {
             : collection
         )
       );
+      // Clear stale saved-request references from open tabs
+      setTabs((current) =>
+        current.map((t) =>
+          t.savedRequestId === requestId ? { ...t, savedRequestId: undefined, savedCollectionId: undefined } : t
+        )
+      );
     },
     [collections, syncCollections]
   );
@@ -967,6 +1098,43 @@ export default function RestClientPage() {
         );
       }
       setRenamingRequestId(null);
+    },
+    [collections, syncCollections]
+  );
+
+  const deleteCollection = useCallback(
+    (collectionId: string) => {
+      if (!window.confirm('Delete this collection and all its requests?')) return;
+      syncCollections(collections.filter((c) => c.id !== collectionId));
+      // Clear stale saved-request references from open tabs
+      setTabs((current) =>
+        current.map((t) =>
+          t.savedCollectionId === collectionId ? { ...t, savedRequestId: undefined, savedCollectionId: undefined } : t
+        )
+      );
+    },
+    [collections, syncCollections]
+  );
+
+  const commitRenameCollection = useCallback(
+    (collectionId: string, name: string) => {
+      setRenamingCollectionId(null);
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      syncCollections(collections.map((c) => (c.id === collectionId ? { ...c, name: trimmed } : c)));
+    },
+    [collections, syncCollections]
+  );
+
+  const duplicateRequest = useCallback(
+    (collectionId: string, requestId: string) => {
+      const collection = collections.find((c) => c.id === collectionId);
+      const request = collection?.requests.find((r) => r.id === requestId);
+      if (!request) return;
+      const duplicate: SavedRequest = { ...request, id: createId(), name: `${request.name} (copy)` };
+      syncCollections(
+        collections.map((c) => (c.id === collectionId ? { ...c, requests: [...c.requests, duplicate] } : c))
+      );
     },
     [collections, syncCollections]
   );
@@ -1899,37 +2067,71 @@ export default function RestClientPage() {
                           key={collection.id}
                           className="rounded border border-gray-200 dark:border-[#222222] bg-gray-50 dark:bg-[#171717]"
                         >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedCollections((current) => ({
-                                ...current,
-                                [collection.id]: !current[collection.id],
-                              }))
-                            }
-                            className="group/col flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 dark:text-slate-300"
-                          >
-                            <ChevronDown
-                              className={`h-3.5 w-3.5 transition-transform ${
-                                expandedCollections[collection.id] ? 'rotate-0' : '-rotate-90'
-                              }`}
-                            />
-                            <span className="truncate">{collection.name}</span>
-                            <span className="ml-auto text-[10px] text-gray-400 dark:text-slate-500">
-                              {collection.requests.length}
-                            </span>
+                          <div className="group/col flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-slate-300">
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                exportCollection(collection);
-                              }}
-                              className="ml-1 p-0.5 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-[#5b5bff] group-hover/col:opacity-100"
+                              onClick={() =>
+                                setExpandedCollections((current) => ({
+                                  ...current,
+                                  [collection.id]: !current[collection.id],
+                                }))
+                              }
+                              className="flex items-center gap-2 min-w-0 flex-1"
+                            >
+                              <ChevronDown
+                                className={`shrink-0 h-3.5 w-3.5 transition-transform ${
+                                  expandedCollections[collection.id] ? 'rotate-0' : '-rotate-90'
+                                }`}
+                              />
+                              {renamingCollectionId === collection.id ? (
+                                <input
+                                  autoFocus
+                                  value={renameCollectionValue}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => setRenameCollectionValue(e.target.value)}
+                                  onBlur={() => commitRenameCollection(collection.id, renameCollectionValue)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') commitRenameCollection(collection.id, renameCollectionValue);
+                                    if (e.key === 'Escape') setRenamingCollectionId(null);
+                                    e.stopPropagation();
+                                  }}
+                                  className="min-w-0 flex-1 rounded border border-[#5b5bff] bg-white dark:bg-[#1e1e1e] px-1 py-0.5 text-xs text-gray-800 dark:text-slate-200 outline-none"
+                                />
+                              ) : (
+                                <span className="truncate">{collection.name}</span>
+                              )}
+                              <span className="ml-auto shrink-0 text-[10px] text-gray-400 dark:text-slate-500">
+                                {collection.requests.length}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => exportCollection(collection)}
+                              className="p-0.5 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-[#5b5bff] group-hover/col:opacity-100"
                               title="Export collection"
                             >
                               <Download className="h-3 w-3" />
                             </button>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRenamingCollectionId(collection.id);
+                                setRenameCollectionValue(collection.name);
+                              }}
+                              className="p-0.5 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-gray-700 dark:hover:text-slate-300 group-hover/col:opacity-100"
+                              title="Rename collection"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteCollection(collection.id)}
+                              className="p-0.5 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-red-400 group-hover/col:opacity-100"
+                              title="Delete collection"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
                           {expandedCollections[collection.id] && (
                             <div className="border-t border-gray-200 dark:border-[#222222] bg-white dark:bg-[#141414]">
                               {collection.requests.length === 0 ? (
@@ -1975,6 +2177,16 @@ export default function RestClientPage() {
                                         <span className="truncate text-gray-700 dark:text-slate-300">
                                           {request.name}
                                         </span>
+                                      </button>
+                                    )}
+                                    {renamingRequestId !== request.id && (
+                                      <button
+                                        type="button"
+                                        onClick={() => duplicateRequest(collection.id, request.id)}
+                                        className="p-1 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-gray-700 dark:hover:text-slate-300 group-hover:opacity-100"
+                                        title="Duplicate request"
+                                      >
+                                        <CopyPlus className="h-3 w-3" />
                                       </button>
                                     )}
                                     {renamingRequestId !== request.id && (
@@ -2099,6 +2311,26 @@ export default function RestClientPage() {
                     Clear history
                   </button>
                 </div>
+                <div className="border-b border-gray-200 dark:border-[#222222] px-3 py-2">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 dark:text-slate-600" />
+                    <input
+                      value={historySearch}
+                      onChange={(e) => setHistorySearch(e.target.value)}
+                      placeholder="Filter by URL or method…"
+                      className="h-8 w-full rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] pl-7 pr-3 text-xs text-gray-700 dark:text-slate-300 placeholder-gray-400 dark:placeholder-slate-600 outline-none focus:border-[#5b5bff]"
+                    />
+                    {historySearch && (
+                      <button
+                        type="button"
+                        onClick={() => setHistorySearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="min-h-0 flex-1 overflow-y-auto p-3">
                   {history.length === 0 ? (
                     <div className="px-3 py-6 text-center text-[11px] text-gray-400 dark:text-slate-500">
@@ -2106,32 +2338,38 @@ export default function RestClientPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {history.map((entry) => (
-                        <button
-                          key={entry.id}
-                          type="button"
-                          onClick={() => loadHistoryEntry(entry)}
-                          className="w-full rounded border border-gray-200 dark:border-[#222222] bg-gray-50 dark:bg-[#171717] p-3 text-left transition-colors hover:bg-gray-100 dark:hover:bg-[#1d1d1d]"
-                        >
-                          <div className="mb-2 flex items-center gap-2">
-                            <Badge
-                              className={`rounded-full border px-2 py-0.5 text-[10px] ${getMethodColor(entry.method)} border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#111111]`}
-                            >
-                              {entry.method}
-                            </Badge>
-                            <Badge
-                              className={`rounded-full border px-2 py-0.5 text-[10px] ${getStatusBadgeClass(entry.status)}`}
-                            >
-                              {entry.status}
-                            </Badge>
-                          </div>
-                          <div className="truncate text-xs text-gray-800 dark:text-slate-200">{entry.url}</div>
-                          <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400 dark:text-slate-500">
-                            <span>{entry.time} ms</span>
-                            <span>{new Date(entry.timestamp).toLocaleString()}</span>
-                          </div>
-                        </button>
-                      ))}
+                      {history
+                        .filter((entry) => {
+                          if (!historySearch) return true;
+                          const q = historySearch.toLowerCase();
+                          return entry.url.toLowerCase().includes(q) || entry.method.toLowerCase().includes(q);
+                        })
+                        .map((entry) => (
+                          <button
+                            key={entry.id}
+                            type="button"
+                            onClick={() => loadHistoryEntry(entry)}
+                            className="w-full rounded border border-gray-200 dark:border-[#222222] bg-gray-50 dark:bg-[#171717] p-3 text-left transition-colors hover:bg-gray-100 dark:hover:bg-[#1d1d1d]"
+                          >
+                            <div className="mb-2 flex items-center gap-2">
+                              <Badge
+                                className={`rounded-full border px-2 py-0.5 text-[10px] ${getMethodColor(entry.method)} border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#111111]`}
+                              >
+                                {entry.method}
+                              </Badge>
+                              <Badge
+                                className={`rounded-full border px-2 py-0.5 text-[10px] ${getStatusBadgeClass(entry.status)}`}
+                              >
+                                {entry.status}
+                              </Badge>
+                            </div>
+                            <div className="truncate text-xs text-gray-800 dark:text-slate-200">{entry.url}</div>
+                            <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400 dark:text-slate-500">
+                              <span>{entry.time} ms</span>
+                              <span>{new Date(entry.timestamp).toLocaleString()}</span>
+                            </div>
+                          </button>
+                        ))}
                     </div>
                   )}
                 </div>
@@ -2871,16 +3109,61 @@ export default function RestClientPage() {
                           </>
                         )}
                         {successfulResponse && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await navigator.clipboard.writeText(responsePreview);
-                              toast('Copied!', { duration: 1500 });
-                            }}
-                            className="rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] p-2 text-gray-500 dark:text-slate-400 transition-colors hover:text-gray-900 dark:hover:text-white"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {successfulResponse.isJson && (
+                              <div className="flex rounded border border-gray-300 dark:border-[#2a2a2a] overflow-hidden text-[10px] font-semibold">
+                                <button
+                                  type="button"
+                                  onClick={() => setResponseBodyMode('pretty')}
+                                  className={`px-2 py-1 transition-colors ${responseBodyMode === 'pretty' ? 'bg-[#5b5bff] text-white' : 'bg-white dark:bg-[#1e1e1e] text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}
+                                >
+                                  Pretty
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setResponseBodyMode('raw')}
+                                  className={`px-2 py-1 transition-colors ${responseBodyMode === 'raw' ? 'bg-[#5b5bff] text-white' : 'bg-white dark:bg-[#1e1e1e] text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}
+                                >
+                                  Raw
+                                </button>
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const contentType = successfulResponse.headers['content-type'] ?? '';
+                                const ext = contentType.includes('json')
+                                  ? '.json'
+                                  : contentType.includes('xml')
+                                    ? '.xml'
+                                    : contentType.includes('html')
+                                      ? '.html'
+                                      : '.txt';
+                                const blob = new Blob([responsePreview], { type: 'text/plain' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `response${ext}`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              }}
+                              className="rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] p-2 text-gray-500 dark:text-slate-400 transition-colors hover:text-gray-900 dark:hover:text-white"
+                              title="Save response to file"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await navigator.clipboard.writeText(responsePreview);
+                                toast('Copied!', { duration: 1500 });
+                              }}
+                              className="rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] p-2 text-gray-500 dark:text-slate-400 transition-colors hover:text-gray-900 dark:hover:text-white"
+                              title="Copy to clipboard"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -2936,6 +3219,8 @@ export default function RestClientPage() {
                               )}
                             </div>
                           </div>
+                        ) : responseBodyMode === 'pretty' && successfulResponse?.isJson ? (
+                          <PrettyJsonView json={responsePreview} />
                         ) : (
                           <pre className="h-full overflow-auto bg-gray-50 dark:bg-[#111] p-4 font-mono text-[12px] leading-relaxed text-gray-700 dark:text-[#b5b5b5] selection:bg-[#5b5bff]/30">
                             {responsePreview}

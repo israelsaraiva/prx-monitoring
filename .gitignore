@@ -53,6 +53,12 @@ Thumbs.db
 logs
 *.log
 
+# Windows portable distribution build artifacts
+macc-monitoring-*-win/
+macc-monitoring-*-win.zip
+dist-node/
+node-win.zip
+
 # Package manager
 .pnpm-store/
 .yarn/
