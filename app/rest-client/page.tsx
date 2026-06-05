@@ -224,9 +224,11 @@ async function sendDirectRequest(
   method: string,
   headers: Record<string, string>,
   requestBody: unknown,
-  timeoutMs: number
+  timeoutMs: number,
+  cancelSignal?: AbortSignal
 ): Promise<Exclude<RequestResponse, { error: string }>> {
   const controller = new AbortController();
+  cancelSignal?.addEventListener('abort', () => controller.abort(), { once: true });
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const startTime = Date.now();
 
@@ -473,6 +475,7 @@ export default function RestClientPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const sendMenuRef = useRef<HTMLDivElement | null>(null);
+  const cancelControllerRef = useRef<AbortController | null>(null);
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0], [activeTabId, tabs]);
   const activeEnvironment = useMemo(
     () => environments.find((environment) => environment.id === activeEnvironmentId) ?? null,
@@ -749,6 +752,9 @@ export default function RestClientPage() {
       updateTab(tabId, (tab) => ({ ...tab, loading: true, response: null }));
       setSendMenuOpen(false);
 
+      const cancelController = new AbortController();
+      cancelControllerRef.current = cancelController;
+
       try {
         const hasProtocol = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(activeTab.url);
         if (!hasProtocol) {
@@ -825,7 +831,8 @@ export default function RestClientPage() {
               activeTab.method,
               headers,
               requestBody,
-              settingsDraft.timeout ?? 30000
+              settingsDraft.timeout ?? 30000,
+              cancelController.signal
             );
           } catch (directError: any) {
             const isTimeout = directError?.name === 'AbortError';
@@ -859,10 +866,12 @@ export default function RestClientPage() {
 
         if ('error' in data) {
           // Preserve errorCode and time from the structured proxy error response
+          cancelControllerRef.current = null;
           updateTab(tabId, (tab) => ({ ...tab, response: data, loading: false }));
           return;
         }
 
+        cancelControllerRef.current = null;
         updateTab(tabId, (tab) => ({ ...tab, response: data, loading: false }));
 
         const historyEntry: HistoryEntry = {
@@ -896,6 +905,7 @@ export default function RestClientPage() {
           });
         }
       } catch (error) {
+        cancelControllerRef.current = null;
         const errorMessage = error instanceof Error ? error.message : 'Failed to execute request';
         updateTab(tabId, (tab) => ({
           ...tab,
@@ -991,6 +1001,12 @@ export default function RestClientPage() {
                 method?: string;
                 url?: string | { raw?: string; query?: Array<{ key?: string; value?: string; disabled?: boolean }> };
                 header?: Array<{ key?: string; value?: string; disabled?: boolean }>;
+                auth?: {
+                  type?: string;
+                  bearer?: Array<{ key?: string; value?: string }>;
+                  basic?: Array<{ key?: string; value?: string }>;
+                  apikey?: Array<{ key?: string; value?: string }>;
+                };
                 body?: {
                   mode?: string;
                   raw?: string;
@@ -1063,7 +1079,25 @@ export default function RestClientPage() {
                 })) || [createKeyValue()],
                 body,
                 bodyType,
-                auth: { type: 'none' } as AuthConfig,
+                auth: (() => {
+                  const a = request.auth;
+                  if (a?.type === 'bearer') {
+                    const token = a.bearer?.find((v) => v.key === 'token')?.value ?? '';
+                    return { type: 'bearer', token } as AuthConfig;
+                  }
+                  if (a?.type === 'basic') {
+                    const username = a.basic?.find((v) => v.key === 'username')?.value ?? '';
+                    const password = a.basic?.find((v) => v.key === 'password')?.value ?? '';
+                    return { type: 'basic', username, password } as AuthConfig;
+                  }
+                  if (a?.type === 'apikey') {
+                    const key = a.apikey?.find((v) => v.key === 'key')?.value ?? '';
+                    const value = a.apikey?.find((v) => v.key === 'value')?.value ?? '';
+                    const addTo = a.apikey?.find((v) => v.key === 'in')?.value === 'query' ? 'query' : 'header';
+                    return { type: 'apikey', key, value, addTo } as AuthConfig;
+                  }
+                  return { type: 'none' } as AuthConfig;
+                })(),
               },
             ];
           });
@@ -1090,21 +1124,86 @@ export default function RestClientPage() {
   );
 
   const exportCollection = useCallback((collection: Collection) => {
+    const serializePostmanAuth = (auth: AuthConfig) => {
+      if (auth.type === 'bearer') {
+        return { type: 'bearer', bearer: [{ key: 'token', value: auth.token, type: 'string' }] };
+      }
+      if (auth.type === 'basic') {
+        return {
+          type: 'basic',
+          basic: [
+            { key: 'username', value: auth.username, type: 'string' },
+            { key: 'password', value: auth.password, type: 'string' },
+          ],
+        };
+      }
+      if (auth.type === 'apikey') {
+        return {
+          type: 'apikey',
+          apikey: [
+            { key: 'key', value: auth.key, type: 'string' },
+            { key: 'value', value: auth.value, type: 'string' },
+            { key: 'in', value: auth.addTo, type: 'string' },
+          ],
+        };
+      }
+      return undefined;
+    };
+
     const postman = {
       info: {
         name: collection.name,
         _postman_id: collection.id,
         schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
       },
-      item: collection.requests.map((r) => ({
-        name: r.name,
-        request: {
-          method: r.method,
-          header: r.headers.filter((h) => h.key).map((h) => ({ key: h.key, value: h.value })),
-          url: { raw: r.url },
-          body: r.body ? { mode: 'raw', raw: r.body } : undefined,
-        },
-      })),
+      item: collection.requests.map((r) => {
+        // Serialize body into Postman format preserving mode
+        let postmanBody: Record<string, unknown> | undefined;
+        if (r.body && r.bodyType !== 'none') {
+          if (r.bodyType === 'form-data') {
+            postmanBody = {
+              mode: 'formdata',
+              formdata: deserializeKeyValueBody(r.body)
+                .filter((item) => item.key)
+                .map((item) => ({ key: item.key, value: item.value, disabled: !item.active })),
+            };
+          } else if (r.bodyType === 'urlencoded') {
+            postmanBody = {
+              mode: 'urlencoded',
+              urlencoded: deserializeKeyValueBody(r.body)
+                .filter((item) => item.key)
+                .map((item) => ({ key: item.key, value: item.value, disabled: !item.active })),
+            };
+          } else {
+            postmanBody = {
+              mode: 'raw',
+              raw: r.body,
+              options: { raw: { language: r.bodyType } },
+            };
+          }
+        }
+
+        // Serialize query params
+        const queryParams = r.params
+          .filter((p) => p.key)
+          .map((p) => ({ key: p.key, value: p.value, disabled: !p.active }));
+
+        const postmanAuth = serializePostmanAuth(r.auth);
+
+        return {
+          name: r.name,
+          request: {
+            method: r.method,
+            header: r.headers.filter((h) => h.key).map((h) => ({ key: h.key, value: h.value, disabled: !h.active })),
+            url: {
+              raw: r.url,
+              ...(queryParams.length > 0 ? { query: queryParams } : {}),
+            },
+            ...(postmanBody ? { body: postmanBody } : {}),
+            ...(postmanAuth ? { auth: postmanAuth } : {}),
+          },
+        };
+      }),
     };
     const blob = new Blob([JSON.stringify(postman, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1130,34 +1229,50 @@ export default function RestClientPage() {
     (lang: 'curl' | 'http' | 'fetch' | 'axios' | 'python' | 'go') => {
       if (!activeTab) return '';
       const { method, url, headers, params, body, bodyType, auth } = activeTab;
-      const allHeaders = headers.filter((h) => h.key && h.active !== false);
+
+      // Apply environment variable interpolation to all user-provided values
+      const iEnv = (s: string) => interpolateEnv(s, activeEnvironment);
+      const resolvedUrl = iEnv(url);
+      const resolvedBody = iEnv(body);
+      const allHeaders = headers
+        .filter((h) => h.key && h.active !== false)
+        .map((h) => ({ ...h, key: iEnv(h.key), value: iEnv(h.value) }));
 
       // Build the full URL with active query params from the params tab (mirrors handleSend logic)
-      const activeParams = params.filter((p) => p.active && p.key.trim());
+      const activeParams = params
+        .filter((p) => p.active && p.key.trim())
+        .map((p) => ({ ...p, key: iEnv(p.key), value: iEnv(p.value) }));
       const fullUrl = (() => {
-        if (activeParams.length === 0) return url;
+        if (activeParams.length === 0) return resolvedUrl;
         try {
-          const urlObj = new URL(/^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(url) ? url : `https://${url}`);
+          const urlObj = new URL(
+            /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(resolvedUrl) ? resolvedUrl : `https://${resolvedUrl}`
+          );
           activeParams.forEach((p) => urlObj.searchParams.set(p.key, p.value));
           return urlObj.toString();
         } catch {
-          const sep = url.includes('?') ? '&' : '?';
+          const sep = resolvedUrl.includes('?') ? '&' : '?';
           return (
-            url + sep + activeParams.map((p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&')
+            resolvedUrl +
+            sep +
+            activeParams.map((p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&')
           );
         }
       })();
 
       // Merge auth into headers for snippet generation
       const authHeader: { key: string; value: string } | null = (() => {
-        if (auth.type === 'bearer') return { key: 'Authorization', value: `Bearer ${auth.token}` };
+        if (auth.type === 'bearer') return { key: 'Authorization', value: `Bearer ${iEnv(auth.token)}` };
         if (auth.type === 'basic')
-          return { key: 'Authorization', value: `Basic ${btoa(`${auth.username}:${auth.password}`)}` };
-        if (auth.type === 'apikey' && auth.addTo === 'header') return { key: auth.key, value: auth.value };
+          return {
+            key: 'Authorization',
+            value: `Basic ${btoa(`${iEnv(auth.username)}:${iEnv(auth.password)}`)}`,
+          };
+        if (auth.type === 'apikey' && auth.addTo === 'header') return { key: iEnv(auth.key), value: iEnv(auth.value) };
         return null;
       })();
       const allH = authHeader ? [...allHeaders, authHeader] : allHeaders;
-      const hasBody = !['GET', 'HEAD'].includes(method.toUpperCase()) && bodyType !== 'none' && body;
+      const hasBody = !['GET', 'HEAD'].includes(method.toUpperCase()) && bodyType !== 'none' && resolvedBody;
       if (hasBody && bodyType === 'json' && !allH.some((h) => h.key.toLowerCase() === 'content-type')) {
         allH.push({ key: 'Content-Type', value: 'application/json' });
       }
@@ -1170,7 +1285,7 @@ export default function RestClientPage() {
         const bsq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
         const parts = [`curl -X ${method.toUpperCase()} ${bsq(fullUrl)}`];
         allH.forEach((h) => parts.push(`  -H ${bsq(`${h.key}: ${h.value}`)}`));
-        if (hasBody) parts.push(`  --data-raw ${bsq(body)}`);
+        if (hasBody) parts.push(`  --data-raw ${bsq(resolvedBody)}`);
         return parts.join(' \\\n');
       }
 
@@ -1192,35 +1307,35 @@ export default function RestClientPage() {
         })();
         const headersStr = headerLines('', (k, v) => `${k}: ${v}`);
         const hostLine = host && !allH.some((h) => h.key.toLowerCase() === 'host') ? `Host: ${host}\n` : '';
-        return `${method.toUpperCase()} ${u} HTTP/1.1\n${hostLine}${headersStr}${hasBody ? `\n\n${body}` : ''}`;
+        return `${method.toUpperCase()} ${u} HTTP/1.1\n${hostLine}${headersStr}${hasBody ? `\n\n${resolvedBody}` : ''}`;
       }
 
       if (lang === 'fetch') {
         const headerObj = allH.length ? `{\n${headerLines('      ', (k, v) => `'${k}': '${v}'`, ',\n')}\n    }` : '{}';
         // Escape backticks and template-literal special chars so the snippet is valid JS
-        const safeBody = hasBody ? body.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$') : '';
+        const safeBody = hasBody ? resolvedBody.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$') : '';
         return `const response = await fetch('${fullUrl}', {\n  method: '${method.toUpperCase()}',\n  headers: ${headerObj},${hasBody ? `\n  body: \`${safeBody}\`,` : ''}\n});\nconst data = await response.json();\nconsole.log(data);`;
       }
 
       if (lang === 'axios') {
         const headerObj = allH.length ? `{\n${headerLines('    ', (k, v) => `'${k}': '${v}'`, ',\n')}\n  }` : '{}';
-        const safeBody = hasBody ? body.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$') : '';
+        const safeBody = hasBody ? resolvedBody.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$') : '';
         return `import axios from 'axios';\n\nconst response = await axios({\n  method: '${method.toLowerCase()}',\n  url: '${fullUrl}',\n  headers: ${headerObj},${hasBody ? `\n  data: \`${safeBody}\`,` : ''}\n});\nconsole.log(response.data);`;
       }
 
       if (lang === 'python') {
         const headerDict = allH.length ? `{\n${headerLines('    ', (k, v) => `"${k}": "${v}"`, ',\n')}\n}` : '{}';
-        return `import requests\n\nheaders = ${headerDict}\n\nresponse = requests.${method.toLowerCase()}(\n    "${fullUrl}",\n    headers=headers,${hasBody ? `\n    data="""${body}""",` : ''}\n)\nprint(response.json())`;
+        return `import requests\n\nheaders = ${headerDict}\n\nresponse = requests.${method.toLowerCase()}(\n    "${fullUrl}",\n    headers=headers,${hasBody ? `\n    data="""${resolvedBody}""",` : ''}\n)\nprint(response.json())`;
       }
 
       if (lang === 'go') {
         const goHeaders = allH.map((h) => `\treq.Header.Set("${h.key}", "${h.value}")`).join('\n');
-        return `package main\n\nimport (\n\t"fmt"\n\t"net/http"${hasBody ? '\n\t"strings"' : ''}\n)\n\nfunc main() {\n\t${hasBody ? `body := strings.NewReader(\`${body}\`)\n\treq, _ := http.NewRequest("${method.toUpperCase()}", "${fullUrl}", body)` : `req, _ := http.NewRequest("${method.toUpperCase()}", "${fullUrl}", nil)`}\n${goHeaders ? goHeaders + '\n' : ''}\n\tclient := &http.Client{}\n\tresp, _ := client.Do(req)\n\tdefer resp.Body.Close()\n\tfmt.Println(resp.Status)\n}`;
+        return `package main\n\nimport (\n\t"fmt"\n\t"net/http"${hasBody ? '\n\t"strings"' : ''}\n)\n\nfunc main() {\n\t${hasBody ? `body := strings.NewReader(\`${resolvedBody}\`)\n\treq, _ := http.NewRequest("${method.toUpperCase()}", "${fullUrl}", body)` : `req, _ := http.NewRequest("${method.toUpperCase()}", "${fullUrl}", nil)`}\n${goHeaders ? goHeaders + '\n' : ''}\n\tclient := &http.Client{}\n\tresp, _ := client.Do(req)\n\tdefer resp.Body.Close()\n\tfmt.Println(resp.Status)\n}`;
       }
 
       return '';
     },
-    [activeTab]
+    [activeEnvironment, activeTab]
   );
 
   const parseCurlIntoTab = useCallback(() => {
@@ -1519,6 +1634,11 @@ export default function RestClientPage() {
     toast('History cleared');
   }, [syncHistory]);
 
+  const cancelRequest = useCallback(() => {
+    cancelControllerRef.current?.abort();
+    cancelControllerRef.current = null;
+  }, []);
+
   useEffect(() => {
     function isTextInput(target: EventTarget | null) {
       if (!(target instanceof HTMLElement)) {
@@ -1631,7 +1751,13 @@ export default function RestClientPage() {
           </Link>
           <div className="hidden items-center gap-4 text-xs font-semibold text-gray-500 dark:text-slate-400 md:flex">
             <span className="text-gray-900 dark:text-white">API</span>
-            <span className="cursor-pointer hover:text-gray-900 dark:hover:text-white">Environments</span>
+            <button
+              type="button"
+              onClick={() => setSidePanel((current) => (current === 'environments' ? null : 'environments'))}
+              className="cursor-pointer hover:text-gray-900 dark:hover:text-white"
+            >
+              Environments
+            </button>
           </div>
         </div>
 
@@ -2348,28 +2474,30 @@ export default function RestClientPage() {
                   </button>
                 )}
                 <div ref={sendMenuRef} className="relative flex h-full shrink-0">
-                  <Button
-                    type="button"
-                    onClick={() => void handleSend(false)}
-                    disabled={activeTab?.loading}
-                    className="h-full rounded-none border-0 bg-[#5b5bff] px-6 font-semibold text-white transition-colors hover:bg-[#4b4be6]"
-                  >
-                    {activeTab?.loading ? (
-                      <span className="flex items-center text-xs">
-                        <div className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                        Sending
-                      </span>
-                    ) : (
-                      <>
-                        <Send className="mr-2 h-4 w-4" />
-                        <span className="text-[13px]">Send</span>
-                      </>
-                    )}
-                  </Button>
+                  {activeTab?.loading ? (
+                    <Button
+                      type="button"
+                      onClick={cancelRequest}
+                      className="h-full rounded-none border-0 bg-red-500 px-6 font-semibold text-white transition-colors hover:bg-red-600"
+                    >
+                      <X className="mr-2 h-4 w-4" />
+                      <span className="text-[13px]">Cancel</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      onClick={() => void handleSend(false)}
+                      className="h-full rounded-none border-0 bg-[#5b5bff] px-6 font-semibold text-white transition-colors hover:bg-[#4b4be6]"
+                    >
+                      <Send className="mr-2 h-4 w-4" />
+                      <span className="text-[13px]">Send</span>
+                    </Button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setSendMenuOpen((current) => !current)}
-                    className="flex h-full items-center justify-center border-l border-[#4b4be6]/50 bg-[#5b5bff] px-2 transition-colors hover:bg-[#4b4be6]"
+                    disabled={activeTab?.loading}
+                    className="flex h-full items-center justify-center border-l border-[#4b4be6]/50 bg-[#5b5bff] px-2 transition-colors hover:bg-[#4b4be6] disabled:hidden"
                   >
                     <ChevronDown className="h-4 w-4 text-white" />
                   </button>
@@ -2396,14 +2524,6 @@ export default function RestClientPage() {
             </div>
 
             <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden border-t border-gray-200 dark:border-[#222222] xl:flex-row">
-              {activeTab?.loading && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white/60 dark:bg-[#111]/70 backdrop-blur-sm">
-                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 dark:border-slate-700 border-t-[#5b5bff]" />
-                  <p className="text-xs font-medium text-gray-500 dark:text-slate-400 animate-pulse">
-                    Sending request…
-                  </p>
-                </div>
-              )}
               <div className="flex w-full shrink-0 flex-col border-b border-gray-200 dark:border-[#222222] xl:w-1/2 xl:shrink xl:border-b-0 xl:border-r">
                 <Tabs defaultValue="params" className="flex flex-1 min-h-0 flex-col">
                   <TabsList className="hide-scrollbar h-11 w-full shrink-0 justify-start overflow-x-auto rounded-none border-b border-gray-200 dark:border-[#222222] bg-gray-50 dark:bg-[#171717] px-1 py-0">
@@ -2467,7 +2587,15 @@ export default function RestClientPage() {
                       className="m-0 flex flex-1 min-h-0 flex-col p-4 overflow-y-auto outline-none"
                     >
                       <div className="flex items-center justify-between rounded-t border border-b-0 border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] p-2 text-[11px] text-gray-700 dark:text-slate-300">
-                        <span className="font-semibold text-[#5b5bff]">raw</span>
+                        <span className="font-semibold text-[#5b5bff]">
+                          {activeTab?.bodyType === 'form-data'
+                            ? 'form-data'
+                            : activeTab?.bodyType === 'urlencoded'
+                              ? 'urlencoded'
+                              : activeTab?.bodyType === 'none'
+                                ? 'none'
+                                : 'raw'}
+                        </span>
                         <Select
                           value={activeTab?.bodyType ?? 'none'}
                           onValueChange={(value) => handleBodyTypeChange(activeTabId, value as BodyType)}
