@@ -12,6 +12,7 @@ export interface SavedRequest {
   id: string;
   collectionId: string;
   name: string;
+  description?: string;
   method: string;
   url: string;
   headers: KeyValue[];
@@ -62,6 +63,7 @@ export interface HistoryEntry {
     status: number;
     statusText: string;
     headers: Record<string, string>;
+    setCookies?: string[];
     data: unknown;
     isJson: boolean;
     time: number;

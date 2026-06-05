@@ -96,6 +96,7 @@ type SaveDialogState = {
   collectionId: string;
   newCollectionName: string;
   requestName: string;
+  description: string;
 };
 
 function createId() {
@@ -299,11 +300,12 @@ async function sendDirectRequest(
   };
 }
 
-function buildSavedRequest(tab: RequestTab, collectionId: string, name: string): SavedRequest {
+function buildSavedRequest(tab: RequestTab, collectionId: string, name: string, description?: string): SavedRequest {
   return {
     id: createId(),
     collectionId,
     name,
+    description: description?.trim() || undefined,
     method: tab.method,
     url: tab.url,
     headers: tab.headers.map((header) => ({ ...header })),
@@ -408,6 +410,48 @@ function PrettyJsonLine({ line }: { line: string }) {
       {hasComma && <span style={{ color: '#676e95' }}>,</span>}
     </>
   );
+}
+
+type ParsedCookie = {
+  name: string;
+  value: string;
+  path?: string;
+  domain?: string;
+  expires?: string;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite?: string;
+};
+
+function parseCookieString(str: string): ParsedCookie {
+  const parts = str.split(';').map((p) => p.trim());
+  const [nameValue, ...attrs] = parts;
+  const eqIdx = nameValue.indexOf('=');
+  const name = eqIdx >= 0 ? nameValue.slice(0, eqIdx) : nameValue;
+  const value = eqIdx >= 0 ? nameValue.slice(eqIdx + 1) : '';
+  let path: string | undefined, domain: string | undefined, expires: string | undefined, sameSite: string | undefined;
+  let httpOnly = false,
+    secure = false;
+  for (const attr of attrs) {
+    const lower = attr.toLowerCase();
+    if (lower === 'httponly') {
+      httpOnly = true;
+      continue;
+    }
+    if (lower === 'secure') {
+      secure = true;
+      continue;
+    }
+    const eqPos = attr.indexOf('=');
+    if (eqPos < 0) continue;
+    const k = attr.slice(0, eqPos).trim().toLowerCase();
+    const v = attr.slice(eqPos + 1).trim();
+    if (k === 'path') path = v;
+    else if (k === 'domain') domain = v;
+    else if (k === 'expires') expires = v;
+    else if (k === 'samesite') sameSite = v;
+  }
+  return { name, value, path, domain, expires, httpOnly, secure, sameSite };
 }
 
 function PrettyJsonView({ json }: { json: string }) {
@@ -555,6 +599,7 @@ export default function RestClientPage() {
   const [inlineSaveName, setInlineSaveName] = useState('');
   const [renamingRequestId, setRenamingRequestId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [renameDescriptionValue, setRenameDescriptionValue] = useState('');
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [codeSnippetOpen, setCodeSnippetOpen] = useState(false);
   const [codeSnippetLang, setCodeSnippetLang] = useState<'curl' | 'http' | 'fetch' | 'axios' | 'python' | 'go'>('curl');
@@ -570,6 +615,7 @@ export default function RestClientPage() {
     collectionId: '',
     newCollectionName: '',
     requestName: '',
+    description: '',
   });
   const [renamingCollectionId, setRenamingCollectionId] = useState<string | null>(null);
   const [renameCollectionValue, setRenameCollectionValue] = useState('');
@@ -723,10 +769,12 @@ export default function RestClientPage() {
       collectionId,
       requestName,
       newCollectionName,
+      description,
     }: {
       collectionId: string;
       requestName: string;
       newCollectionName?: string;
+      description?: string;
     }) => {
       if (!activeTab) {
         return false;
@@ -760,7 +808,7 @@ export default function RestClientPage() {
         return false;
       }
 
-      const savedRequest = buildSavedRequest(activeTab, targetCollectionId, trimmedRequestName);
+      const savedRequest = buildSavedRequest(activeTab, targetCollectionId, trimmedRequestName, description);
       const updatedCollections = nextCollections.map((collection) =>
         collection.id === targetCollectionId
           ? { ...collection, requests: [savedRequest, ...collection.requests] }
@@ -1027,6 +1075,7 @@ export default function RestClientPage() {
             collectionId: collections[0]?.id ?? '__new__',
             newCollectionName: '',
             requestName: extractHostname(activeTab.url),
+            description: '',
           });
         }
       } catch (error) {
@@ -1083,7 +1132,7 @@ export default function RestClientPage() {
   );
 
   const commitRename = useCallback(
-    (collectionId: string, requestId: string, name: string) => {
+    (collectionId: string, requestId: string, name: string, description?: string) => {
       const trimmed = name.trim();
       if (trimmed) {
         syncCollections(
@@ -1091,7 +1140,9 @@ export default function RestClientPage() {
             collection.id === collectionId
               ? {
                   ...collection,
-                  requests: collection.requests.map((r) => (r.id === requestId ? { ...r, name: trimmed } : r)),
+                  requests: collection.requests.map((r) =>
+                    r.id === requestId ? { ...r, name: trimmed, description: description?.trim() || undefined } : r
+                  ),
                 }
               : collection
           )
@@ -1950,6 +2001,7 @@ export default function RestClientPage() {
                 collectionId: collections[0]?.id ?? '__new__',
                 newCollectionName: '',
                 requestName: extractHostname(activeTab?.url ?? ''),
+                description: '',
               })
             }
             className="hidden h-8 items-center gap-2 rounded border border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] px-3 text-xs font-medium text-gray-700 dark:text-slate-300 transition-colors hover:bg-gray-200 dark:hover:bg-[#252525] sm:flex"
@@ -2145,38 +2197,79 @@ export default function RestClientPage() {
                                     className="group flex items-center gap-2 border-b border-gray-200 dark:border-[#1f1f1f] px-3 py-2 text-xs last:border-0 hover:bg-gray-100 dark:hover:bg-[#1a1a1a]"
                                   >
                                     {renamingRequestId === request.id ? (
-                                      <>
-                                        <span
-                                          className={`shrink-0 text-[10px] font-bold ${getMethodColor(request.method)}`}
-                                        >
-                                          {request.method}
-                                        </span>
+                                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                        <div className="flex items-center gap-1.5">
+                                          <span
+                                            className={`shrink-0 text-[10px] font-bold ${getMethodColor(request.method)}`}
+                                          >
+                                            {request.method}
+                                          </span>
+                                          <input
+                                            autoFocus
+                                            value={renameValue}
+                                            onChange={(e) => setRenameValue(e.target.value)}
+                                            onBlur={() =>
+                                              commitRename(
+                                                collection.id,
+                                                request.id,
+                                                renameValue,
+                                                renameDescriptionValue
+                                              )
+                                            }
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter')
+                                                commitRename(
+                                                  collection.id,
+                                                  request.id,
+                                                  renameValue,
+                                                  renameDescriptionValue
+                                                );
+                                              if (e.key === 'Escape') setRenamingRequestId(null);
+                                            }}
+                                            className="min-w-0 flex-1 rounded border border-[#5b5bff] bg-white dark:bg-[#1e1e1e] px-1 py-0.5 text-xs text-gray-800 dark:text-slate-200 outline-none"
+                                          />
+                                        </div>
                                         <input
-                                          autoFocus
-                                          value={renameValue}
-                                          onChange={(e) => setRenameValue(e.target.value)}
-                                          onBlur={() => commitRename(collection.id, request.id, renameValue)}
+                                          value={renameDescriptionValue}
+                                          onChange={(e) => setRenameDescriptionValue(e.target.value)}
+                                          placeholder="Description (optional)"
+                                          onBlur={() =>
+                                            commitRename(collection.id, request.id, renameValue, renameDescriptionValue)
+                                          }
                                           onKeyDown={(e) => {
-                                            if (e.key === 'Enter') commitRename(collection.id, request.id, renameValue);
+                                            if (e.key === 'Enter')
+                                              commitRename(
+                                                collection.id,
+                                                request.id,
+                                                renameValue,
+                                                renameDescriptionValue
+                                              );
                                             if (e.key === 'Escape') setRenamingRequestId(null);
                                           }}
-                                          className="min-w-0 flex-1 rounded border border-[#5b5bff] bg-white dark:bg-[#1e1e1e] px-1 py-0.5 text-xs text-gray-800 dark:text-slate-200 outline-none"
+                                          className="min-w-0 w-full rounded border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] px-1 py-0.5 text-[10px] text-gray-500 dark:text-slate-500 placeholder-gray-300 dark:placeholder-slate-700 outline-none"
                                         />
-                                      </>
+                                      </div>
                                     ) : (
                                       <button
                                         type="button"
                                         onClick={() => loadSavedRequest(request)}
-                                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                        className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
                                       >
-                                        <span
-                                          className={`shrink-0 text-[10px] font-bold ${getMethodColor(request.method)}`}
-                                        >
-                                          {request.method}
-                                        </span>
-                                        <span className="truncate text-gray-700 dark:text-slate-300">
-                                          {request.name}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <span
+                                            className={`shrink-0 text-[10px] font-bold ${getMethodColor(request.method)}`}
+                                          >
+                                            {request.method}
+                                          </span>
+                                          <span className="truncate text-gray-700 dark:text-slate-300">
+                                            {request.name}
+                                          </span>
+                                        </div>
+                                        {request.description && (
+                                          <span className="truncate pl-5 text-[10px] italic text-gray-400 dark:text-slate-600">
+                                            {request.description}
+                                          </span>
+                                        )}
                                       </button>
                                     )}
                                     {renamingRequestId !== request.id && (
@@ -2195,6 +2288,7 @@ export default function RestClientPage() {
                                         onClick={() => {
                                           setRenamingRequestId(request.id);
                                           setRenameValue(request.name);
+                                          setRenameDescriptionValue(request.description ?? '');
                                         }}
                                         className="p-1 text-gray-400 dark:text-slate-600 opacity-0 transition-opacity hover:text-gray-700 dark:hover:text-slate-300 group-hover:opacity-100"
                                       >
@@ -3068,6 +3162,15 @@ export default function RestClientPage() {
                             ({successfulResponse ? Object.keys(successfulResponse.headers || {}).length : 0})
                           </span>
                         </TabsTrigger>
+                        <TabsTrigger
+                          className="h-full rounded-none border-b-2 border-transparent px-4 text-xs font-semibold text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300 data-[state=active]:border-[#5b5bff] data-[state=active]:bg-transparent data-[state=active]:text-gray-900 dark:data-[state=active]:text-white"
+                          value="response-cookies"
+                        >
+                          Cookies
+                          {successfulResponse?.setCookies && successfulResponse.setCookies.length > 0 && (
+                            <span className="ml-1 opacity-50">({successfulResponse.setCookies.length})</span>
+                          )}
+                        </TabsTrigger>
                       </TabsList>
 
                       <div className="flex items-center gap-4 whitespace-nowrap px-3 py-2 font-mono text-[11px] sm:py-0">
@@ -3244,6 +3347,50 @@ export default function RestClientPage() {
                                 </span>
                               </div>
                             ))}
+                          </div>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="response-cookies" className="m-0 flex-1 overflow-y-auto p-4 outline-none">
+                        {successfulResponse?.setCookies && successfulResponse.setCookies.length > 0 ? (
+                          <div className="overflow-hidden rounded border border-gray-300 dark:border-[#2a2a2a]">
+                            <div className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto] border-b border-gray-300 dark:border-[#2a2a2a] bg-gray-100 dark:bg-[#1e1e1e] px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">
+                              <span>Name</span>
+                              <span>Value</span>
+                              <span className="px-2">Path</span>
+                              <span className="px-2">Expires</span>
+                              <span className="px-2">HttpOnly</span>
+                              <span className="px-2">Secure</span>
+                            </div>
+                            {successfulResponse.setCookies.map((raw, i) => {
+                              const c = parseCookieString(raw);
+                              return (
+                                <div
+                                  key={i}
+                                  className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto] border-b border-gray-300 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#181818] font-mono text-[11px] last:border-0 hover:bg-gray-100 dark:hover:bg-[#1f1f1f]"
+                                >
+                                  <span className="break-all p-2 text-[#c792ea]">{c.name}</span>
+                                  <span className="break-all p-2 text-gray-700 dark:text-slate-300">{c.value}</span>
+                                  <span className="p-2 text-gray-500 dark:text-slate-400">{c.path ?? '/'}</span>
+                                  <span className="p-2 text-gray-500 dark:text-slate-400">{c.expires ?? '—'}</span>
+                                  <span className="p-2 text-center text-gray-500 dark:text-slate-400">
+                                    {c.httpOnly ? '✓' : ''}
+                                  </span>
+                                  <span className="p-2 text-center text-gray-500 dark:text-slate-400">
+                                    {c.secure ? '✓' : ''}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-[11px] text-gray-400 dark:text-slate-500">
+                            <p>No cookies in this response.</p>
+                            {!activeTab?.response || isErrorResponse(activeTab.response) ? null : (
+                              <p className="opacity-60">
+                                Cookies are only captured when using <strong>Server Proxy</strong> mode.
+                              </p>
+                            )}
                           </div>
                         )}
                       </TabsContent>
@@ -3537,6 +3684,16 @@ export default function RestClientPage() {
                 className="border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] text-sm text-gray-700 dark:text-slate-300 focus-visible:ring-[#5b5bff]"
               />
             </div>
+            <div className="space-y-2">
+              <label className="text-xs text-gray-500 dark:text-slate-400">Description (optional)</label>
+              <Textarea
+                value={saveDialog.description}
+                onChange={(event) => setSaveDialog((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Brief notes about this request…"
+                rows={2}
+                className="border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] text-xs text-gray-700 dark:text-slate-300 placeholder:text-gray-400 dark:placeholder:text-slate-600 focus-visible:ring-[#5b5bff] resize-none"
+              />
+            </div>
             <Button
               type="button"
               onClick={() => {
@@ -3545,6 +3702,7 @@ export default function RestClientPage() {
                     collectionId: saveDialog.collectionId,
                     requestName: saveDialog.requestName,
                     newCollectionName: saveDialog.newCollectionName,
+                    description: saveDialog.description,
                   })
                 ) {
                   setSaveDialog({
@@ -3552,6 +3710,7 @@ export default function RestClientPage() {
                     collectionId: collections[0]?.id ?? '',
                     newCollectionName: '',
                     requestName: '',
+                    description: '',
                   });
                 }
               }}

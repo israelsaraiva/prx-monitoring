@@ -65,6 +65,11 @@ export async function POST(req: NextRequest) {
     response.headers.forEach((value, key) => {
       responseHeaders[key] = value;
     });
+    // getSetCookie() returns each Set-Cookie header as a separate entry (Node.js 18+)
+    const setCookies: string[] =
+      typeof (response.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie === 'function'
+        ? (response.headers as unknown as { getSetCookie: () => string[] }).getSetCookie()
+        : [];
 
     const responseText = await response.text();
     let responseData;
@@ -80,6 +85,7 @@ export async function POST(req: NextRequest) {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
+      setCookies,
       data: responseData,
       isJson,
       time: endTime - startTime,
