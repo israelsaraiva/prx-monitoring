@@ -1,10 +1,5 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { CardDescription, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { KafkaMessage } from '@/lib/types/kafka';
 import { Loader2, Send, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

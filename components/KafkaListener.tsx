@@ -2,9 +2,6 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { BrokerConfig, KafkaMessage } from '@/lib/types/kafka';
 import { Edit, Loader2, Play, Plus, Save, Settings, Square, Trash2, X, XCircle, Zap } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';

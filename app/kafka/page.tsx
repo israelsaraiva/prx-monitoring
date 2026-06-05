@@ -11,7 +11,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { KafkaMessage } from '@/lib/types/kafka';
 import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 const STORAGE_KEYS = {
@@ -34,10 +34,6 @@ export default function KafkaPage() {
 
   // Pending message for send form (replaces window global)
   const [pendingSendMessage, setPendingSendMessage] = useState<KafkaMessage | null>(null);
-  const resendBrokerRef = useRef(kafkaBroker);
-  useEffect(() => {
-    resendBrokerRef.current = kafkaBroker;
-  }, [kafkaBroker]);
 
   // Load from localStorage on mount
   useEffect(() => {
