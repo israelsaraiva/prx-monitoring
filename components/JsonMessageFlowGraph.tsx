@@ -15,20 +15,60 @@ import {
   FileText,
   Hash,
   Info,
+  X,
   XCircle,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-interface JsonMessageFlowGraphProps {
-  messages: ParsedMessage[];
+function buildMessageExport(msg: ParsedMessage) {
+  let parsedValue: unknown;
+  try {
+    parsedValue = JSON.parse(msg.value);
+  } catch {
+    parsedValue = msg.value;
+  }
+
+  let parsedRawMessage: unknown | undefined;
+  if (msg.rawMessage) {
+    try {
+      parsedRawMessage = JSON.parse(msg.rawMessage);
+    } catch {
+      parsedRawMessage = msg.rawMessage;
+    }
+  }
+
+  return {
+    id: msg.id,
+    flowId: msg.flowId,
+    timestamp: msg.timestamp.toISOString(),
+    topic: msg.topic,
+    partition: msg.partition,
+    offset: msg.offset,
+    key: msg.key,
+    value: parsedValue,
+    flowIdSource: msg.flowIdSource,
+    containerName: msg.containerName,
+    level: msg.level,
+    rawMessage: parsedRawMessage,
+    structuredMessage: msg.structuredMessage,
+    eventType: msg.eventType,
+    flowName: msg.flowName,
+  };
 }
 
-export function JsonMessageFlowGraph({ messages }: JsonMessageFlowGraphProps) {
+interface JsonMessageFlowGraphProps {
+  messages: ParsedMessage[];
+  totalCount?: number;
+  onClearFilters?: () => void;
+}
+
+export function JsonMessageFlowGraph({ messages, totalCount, onClearFilters }: JsonMessageFlowGraphProps) {
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [expandedRawMessages, setExpandedRawMessages] = useState<Set<string>>(new Set());
   const [expandedFullMessages, setExpandedFullMessages] = useState<Set<string>>(new Set());
   const [sortAscending, setSortAscending] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
 
   const sortedMessages = useMemo(() => {
     return [...messages].sort((a, b) => {
@@ -39,13 +79,30 @@ export function JsonMessageFlowGraph({ messages }: JsonMessageFlowGraphProps) {
   }, [messages, sortAscending]);
 
   if (messages.length === 0) {
+    const hasHiddenMessages = typeof totalCount === 'number' && totalCount > 0;
     return (
       <div className="h-full flex flex-col items-center justify-center py-16 text-center">
         <div className="h-16 w-16 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 flex items-center justify-center mb-4">
           <Hash className="h-8 w-8 text-purple-600 dark:text-purple-400" />
         </div>
-        <p className="text-muted-foreground font-medium">No messages received yet</p>
-        <p className="text-sm text-muted-foreground mt-1">Upload a JSON file to visualize message flows</p>
+        {hasHiddenMessages ? (
+          <>
+            <p className="text-muted-foreground font-medium">No messages match your filters</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {totalCount} message{totalCount !== 1 ? 's' : ''} hidden by the current search/filter
+            </p>
+            {onClearFilters && (
+              <Button variant="outline" size="sm" className="mt-4 h-8 text-xs" onClick={onClearFilters}>
+                Clear search & filters
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="text-muted-foreground font-medium">No messages received yet</p>
+            <p className="text-sm text-muted-foreground mt-1">Upload a JSON file to visualize message flows</p>
+          </>
+        )}
       </div>
     );
   }
@@ -86,10 +143,65 @@ export function JsonMessageFlowGraph({ messages }: JsonMessageFlowGraphProps) {
     });
   };
 
+  const toggleMessageSelected = (messageId: string) => {
+    setSelectedMessageIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      return newSet;
+    });
+  };
+
+  const clearSelectedMessages = () => setSelectedMessageIds(new Set());
+
+  const copySelectedMessagesToClipboard = async () => {
+    try {
+      const selectedMessages = sortedMessages.filter((msg) => selectedMessageIds.has(msg.id));
+      const messagesJson = JSON.stringify(selectedMessages.map(buildMessageExport), null, 2);
+      await navigator.clipboard.writeText(messagesJson);
+      toast.success('Copied to Clipboard', {
+        description: `${selectedMessages.length} message${selectedMessages.length !== 1 ? 's' : ''} copied to clipboard`,
+      });
+    } catch (error) {
+      console.error('Failed to copy selected messages to clipboard:', error);
+      toast.error('Copy Failed', {
+        description: 'Failed to copy selected messages to clipboard',
+      });
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {messages.length > 0 && (
-        <div className="flex-shrink-0 mb-3 flex items-center justify-end gap-2 px-2">
+        <div className="flex-shrink-0 mb-3 flex items-center justify-between gap-2 px-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            {selectedMessageIds.size > 0 && (
+              <>
+                <Badge
+                  variant="secondary"
+                  className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                >
+                  {selectedMessageIds.size} selected
+                </Badge>
+                <Button
+                  onClick={copySelectedMessagesToClipboard}
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs border-purple-300/60 text-purple-700 dark:border-purple-700/60 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/20 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Copy Selected
+                </Button>
+                <Button onClick={clearSelectedMessages} variant="ghost" size="sm" className="h-8 text-xs">
+                  <X className="h-3 w-3 mr-1" />
+                  Clear
+                </Button>
+              </>
+            )}
+          </div>
           <Button variant="outline" size="sm" onClick={() => setSortAscending(!sortAscending)} className="h-8 text-xs">
             {sortAscending ? (
               <>
@@ -109,17 +221,27 @@ export function JsonMessageFlowGraph({ messages }: JsonMessageFlowGraphProps) {
         {sortedMessages.map((msg, idx) => {
           const parsed = parseMessage(msg.value);
           const isExpanded = expandedMessages.has(msg.id);
+          const isSelected = selectedMessageIds.has(msg.id);
 
           return (
             <div key={msg.id} className="relative">
               {idx < sortedMessages.length - 1 && (
                 <div className="absolute left-3 top-12 w-0.5 h-8 bg-gradient-to-b from-purple-400 to-pink-400 opacity-40" />
               )}
-              <Card className="ml-2 sm:ml-6 border border-slate-200/70 dark:border-slate-700/50 border-l-4 border-l-purple-500/60 hover:border-l-purple-600 dark:border-l-purple-400/60 dark:hover:border-l-purple-400 transition-colors shadow-sm hover:shadow-md bg-gradient-to-r from-white to-purple-50/10 dark:from-slate-800 dark:to-purple-950/20">
+              <Card
+                className={`ml-2 sm:ml-6 border border-slate-200/70 dark:border-slate-700/50 border-l-4 border-l-purple-500/60 hover:border-l-purple-600 dark:border-l-purple-400/60 dark:hover:border-l-purple-400 transition-colors shadow-sm hover:shadow-md bg-gradient-to-r from-white to-purple-50/10 dark:from-slate-800 dark:to-purple-950/20 ${isSelected ? 'ring-2 ring-purple-500/70 dark:ring-purple-400/70' : ''}`}
+              >
                 <CardContent className="p-3 sm:p-5">
                   <div className="space-y-2">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
                       <div className="flex flex-wrap gap-2 items-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleMessageSelected(msg.id)}
+                          className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                          aria-label={`Select message ${msg.id}`}
+                        />
                         <div className="flex items-center gap-1.5">
                           <div className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shadow-sm" />
                           <Badge
@@ -262,6 +384,8 @@ export function JsonMessageFlowGraph({ messages }: JsonMessageFlowGraphProps) {
                                 level: msg.level,
                                 rawMessage: parsedRawMessage,
                                 structuredMessage: msg.structuredMessage,
+                                eventType: msg.eventType,
+                                flowName: msg.flowName,
                               },
                               null,
                               2

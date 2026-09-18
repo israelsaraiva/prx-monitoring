@@ -17,10 +17,46 @@ import {
   Repeat,
   Send,
   Server,
+  X,
   XCircle,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+
+function buildMessageExport(msg: KafkaMessage) {
+  let parsedValue: unknown;
+  try {
+    parsedValue = JSON.parse(msg.value);
+  } catch {
+    parsedValue = msg.value;
+  }
+
+  let parsedRawMessage: unknown | undefined;
+  if (msg.rawMessage) {
+    try {
+      parsedRawMessage = JSON.parse(msg.rawMessage);
+    } catch {
+      parsedRawMessage = msg.rawMessage;
+    }
+  }
+
+  return {
+    id: msg.id,
+    flowId: msg.flowId,
+    flowIdSource: msg.flowIdSource,
+    timestamp: msg.timestamp.toISOString(),
+    topic: msg.topic,
+    partition: msg.partition,
+    offset: msg.offset,
+    key: msg.key,
+    headers: msg.headers,
+    value: parsedValue,
+    containerName: msg.containerName,
+    level: msg.level,
+    rawMessage: parsedRawMessage,
+    structuredMessage: msg.structuredMessage,
+  };
+}
 
 interface KafkaMessageFlowGraphProps {
   messages: KafkaMessage[];
@@ -47,6 +83,7 @@ export function KafkaMessageFlowGraph({
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [expandedRawMessages, setExpandedRawMessages] = useState<Set<string>>(new Set());
   const [expandedFlowIds, setExpandedFlowIds] = useState<Set<string>>(new Set());
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
 
   const flowGroups = useMemo(() => {
     const filteredMessages = topicFilter ? messages.filter((m) => m.topic === topicFilter) : messages;
@@ -121,6 +158,36 @@ export function KafkaMessageFlowGraph({
     });
   };
 
+  const toggleMessageSelected = (messageId: string) => {
+    setSelectedMessageIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      return newSet;
+    });
+  };
+
+  const clearSelectedMessages = () => setSelectedMessageIds(new Set());
+
+  const copySelectedMessagesToClipboard = async () => {
+    try {
+      const selectedMessages = messages.filter((msg) => selectedMessageIds.has(msg.id));
+      const messagesJson = JSON.stringify(selectedMessages.map(buildMessageExport), null, 2);
+      await navigator.clipboard.writeText(messagesJson);
+      toast.success('Copied to Clipboard', {
+        description: `${selectedMessages.length} message${selectedMessages.length !== 1 ? 's' : ''} copied to clipboard`,
+      });
+    } catch (error) {
+      console.error('Failed to copy selected messages to clipboard:', error);
+      toast.error('Copy Failed', {
+        description: 'Failed to copy selected messages to clipboard',
+      });
+    }
+  };
+
   const getFlowDataJson = (group: FlowGroup): string => {
     const flowData = {
       flowId: group.flowId,
@@ -178,6 +245,29 @@ export function KafkaMessageFlowGraph({
 
   return (
     <div className="h-full overflow-y-auto pr-2 space-y-6 sm:space-y-8">
+      {selectedMessageIds.size > 0 && (
+        <div className="sticky top-0 z-10 flex items-center gap-2 flex-wrap bg-background/95 backdrop-blur px-2 py-2 rounded-md border border-purple-200/50 dark:border-purple-800/30">
+          <Badge
+            variant="secondary"
+            className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+          >
+            {selectedMessageIds.size} selected
+          </Badge>
+          <Button
+            onClick={copySelectedMessagesToClipboard}
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs border-purple-300/60 text-purple-700 dark:border-purple-700/60 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/20 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+          >
+            <Copy className="h-3 w-3 mr-1" />
+            Copy Selected
+          </Button>
+          <Button onClick={clearSelectedMessages} variant="ghost" size="sm" className="h-8 text-xs">
+            <X className="h-3 w-3 mr-1" />
+            Clear
+          </Button>
+        </div>
+      )}
       {flowGroups.map((group) => {
         const isFlowExpanded = expandedFlowIds.has(group.flowId);
 
@@ -244,6 +334,7 @@ export function KafkaMessageFlowGraph({
                   {group.messages.map((msg, idx) => {
                     const parsed = parseMessage(msg.value);
                     const isExpanded = expandedMessages.has(msg.id);
+                    const isSelected = selectedMessageIds.has(msg.id);
 
                     return (
                       <div
@@ -256,11 +347,20 @@ export function KafkaMessageFlowGraph({
                         {idx < group.messages.length - 1 && (
                           <div className="absolute left-3 top-12 w-0.5 h-8 bg-gradient-to-b from-purple-400 to-pink-400 opacity-40" />
                         )}
-                        <Card className="ml-2 sm:ml-6 border border-slate-200/70 dark:border-slate-700/50 border-l-4 border-l-purple-500/60 hover:border-l-purple-600 dark:border-l-purple-400/60 dark:hover:border-l-purple-400 transition-colors shadow-sm hover:shadow-md bg-gradient-to-r from-white to-purple-50/10 dark:from-slate-800 dark:to-purple-950/20">
+                        <Card
+                          className={`ml-2 sm:ml-6 border border-slate-200/70 dark:border-slate-700/50 border-l-4 border-l-purple-500/60 hover:border-l-purple-600 dark:border-l-purple-400/60 dark:hover:border-l-purple-400 transition-colors shadow-sm hover:shadow-md bg-gradient-to-r from-white to-purple-50/10 dark:from-slate-800 dark:to-purple-950/20 ${isSelected ? 'ring-2 ring-purple-500/70 dark:ring-purple-400/70' : ''}`}
+                        >
                           <CardContent className="p-3 sm:p-5">
                             <div className="space-y-2">
                               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
                                 <div className="flex flex-wrap gap-2 items-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleMessageSelected(msg.id)}
+                                    className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                    aria-label={`Select message ${msg.id}`}
+                                  />
                                   <div className="flex items-center gap-1.5">
                                     <div className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 shadow-sm" />
                                     <Badge
@@ -415,42 +515,7 @@ export function KafkaMessageFlowGraph({
                                 <Button
                                   onClick={async () => {
                                     try {
-                                      let parsedValue: unknown;
-                                      try {
-                                        parsedValue = JSON.parse(msg.value);
-                                      } catch {
-                                        parsedValue = msg.value;
-                                      }
-
-                                      let parsedRawMessage: unknown | undefined;
-                                      if (msg.rawMessage) {
-                                        try {
-                                          parsedRawMessage = JSON.parse(msg.rawMessage);
-                                        } catch {
-                                          parsedRawMessage = msg.rawMessage;
-                                        }
-                                      }
-
-                                      const messageJson = JSON.stringify(
-                                        {
-                                          id: msg.id,
-                                          flowId: msg.flowId,
-                                          flowIdSource: msg.flowIdSource,
-                                          timestamp: msg.timestamp.toISOString(),
-                                          topic: msg.topic,
-                                          partition: msg.partition,
-                                          offset: msg.offset,
-                                          key: msg.key,
-                                          headers: msg.headers,
-                                          value: parsedValue,
-                                          containerName: msg.containerName,
-                                          level: msg.level,
-                                          rawMessage: parsedRawMessage,
-                                          structuredMessage: msg.structuredMessage,
-                                        },
-                                        null,
-                                        2
-                                      );
+                                      const messageJson = JSON.stringify(buildMessageExport(msg), null, 2);
                                       await navigator.clipboard.writeText(messageJson);
                                       toast.success('Copied to Clipboard', {
                                         description: 'Message details copied to clipboard',

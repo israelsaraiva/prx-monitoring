@@ -2,6 +2,7 @@ export interface JsonLogEntry {
   preview: boolean;
   result: {
     '@timestamp'?: string;
+    _time?: string;
     _raw?: string;
     structured?: {
       message?: string;
@@ -28,4 +29,6 @@ export interface ParsedMessage {
   level?: string;
   rawMessage?: string;
   structuredMessage?: string;
+  eventType?: string;
+  flowName?: string;
 }

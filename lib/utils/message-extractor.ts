@@ -8,7 +8,63 @@ import {
   UNKNOWN_LEVEL,
 } from './json-parser';
 
-export function extractFlowId(structured: Record<string, unknown>, rawValue: string): string {
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function getStructuredMessageText(
+  result: Record<string, unknown>,
+  structured: Record<string, unknown>
+): string | undefined {
+  const messageValue = structured.message ?? result['structured.message'];
+  return typeof messageValue === 'string' ? messageValue : undefined;
+}
+
+export function resolveEventBody(
+  result: Record<string, unknown>,
+  structured: Record<string, unknown>,
+  rawValue: string
+): Record<string, unknown> {
+  const structuredMessageBody = parseJsonObject(getStructuredMessageText(result, structured));
+  if (structuredMessageBody) {
+    return structuredMessageBody;
+  }
+
+  const envelope = parseJsonObject(rawValue);
+  if (envelope) {
+    const envelopeStructured = envelope.structured as Record<string, unknown> | undefined;
+    const bodyFromEnvelope = parseJsonObject(envelopeStructured?.message);
+    if (bodyFromEnvelope) {
+      return bodyFromEnvelope;
+    }
+    if (envelope.resource) {
+      return envelope;
+    }
+  }
+
+  return {};
+}
+
+export function extractFlowId(
+  body: Record<string, unknown>,
+  structured: Record<string, unknown>,
+  structuredMessageText?: string
+): string {
+  const resource = (body.resource as Record<string, unknown>) || {};
+  if (resource.flowId) {
+    return String(resource.flowId);
+  }
+  if (body.flowId) {
+    return String(body.flowId);
+  }
   if (structured.flowId) {
     return String(structured.flowId);
   }
@@ -18,22 +74,28 @@ export function extractFlowId(structured: Record<string, unknown>, rawValue: str
     return extracted;
   }
 
-  try {
-    const parsed = JSON.parse(rawValue);
-    const extractedFromRaw = extractFlowIdFromObject(parsed);
-    if (extractedFromRaw) {
-      return extractedFromRaw;
-    }
-  } catch {
-    if (structured.message && typeof structured.message === 'string') {
-      const flowIdMatch = structured.message.match(FLOW_ID_PATTERN) || structured.message.match(FLOW_ID_ALT_PATTERN);
-      if (flowIdMatch) {
-        return flowIdMatch[1];
-      }
+  if (structuredMessageText) {
+    const flowIdMatch =
+      structuredMessageText.match(FLOW_ID_PATTERN) || structuredMessageText.match(FLOW_ID_ALT_PATTERN);
+    if (flowIdMatch) {
+      return flowIdMatch[1];
     }
   }
 
   return UNKNOWN_LEVEL;
+}
+
+export function extractEventInfo(body: Record<string, unknown>): { eventType?: string; flowName?: string } {
+  const result: { eventType?: string; flowName?: string } = {};
+
+  if (body.type) {
+    result.eventType = String(body.type);
+  }
+  if (body.flow) {
+    result.flowName = String(body.flow);
+  }
+
+  return result;
 }
 
 export function extractCommandInfo(resource: Record<string, unknown>): {
@@ -66,27 +128,12 @@ export function extractCommandInfo(resource: Record<string, unknown>): {
   return result;
 }
 
-export function extractCommandAndError(
-  rawValue: string,
-  structured: Record<string, unknown>
-): { commandName?: string; success?: boolean; errorMessage?: string } {
-  if (typeof rawValue === 'string') {
-    try {
-      const parsed = JSON.parse(rawValue);
-      return extractCommandInfo(parsed.resource || {});
-    } catch {
-      if (structured.message && typeof structured.message === 'string') {
-        try {
-          const messageParsed = JSON.parse(structured.message);
-          return extractCommandInfo(messageParsed.resource || {});
-        } catch {
-          // Not a JSON string, ignore
-        }
-      }
-    }
-  }
-
-  return {};
+export function extractCommandAndError(body: Record<string, unknown>): {
+  commandName?: string;
+  success?: boolean;
+  errorMessage?: string;
+} {
+  return extractCommandInfo((body.resource as Record<string, unknown>) || {});
 }
 
 export function extractLevel(result: Record<string, unknown>, structured: Record<string, unknown>): string | undefined {
@@ -140,19 +187,19 @@ export function formatJsonValue(rawValue: string): string {
 export function convertEntryToMessage(entry: JsonLogEntry, index: number): ParsedMessage | null {
   const result = entry.result || {};
   const structured = (result['structured'] || result.structured || {}) as Record<string, unknown>;
-  const rawValue = result['_raw'] || result._raw || JSON.stringify(result);
-  const rawMessage =
-    (result['_raw'] || result._raw) && typeof (result['_raw'] || result._raw) === 'string'
-      ? String(result['_raw'] || result._raw)
-      : undefined;
+  const raw = result['_raw'];
+  const rawValueStr = typeof raw === 'string' ? raw : JSON.stringify(result);
+  const rawMessage = typeof raw === 'string' ? raw : undefined;
 
-  const flowId = extractFlowId(structured, typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue));
-  const { commandName, success, errorMessage } = extractCommandAndError(
-    typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue),
-    structured
-  );
+  const structuredMessageText = getStructuredMessageText(result, structured);
+  const body = resolveEventBody(result, structured, rawValueStr);
 
-  const timestamp = result['@timestamp'] ? new Date(result['@timestamp']) : new Date();
+  const flowId = extractFlowId(body, structured, structuredMessageText);
+  const { commandName } = extractCommandAndError(body);
+  const { eventType, flowName } = extractEventInfo(body);
+
+  const timestampValue = result['_time'] || result['@timestamp'] || structured['@timestamp'];
+  const timestamp = timestampValue ? new Date(timestampValue as string) : new Date();
   const containerName = result['kubernetes.container_name'] ? String(result['kubernetes.container_name']) : undefined;
   const level = extractLevel(result, structured);
 
@@ -161,7 +208,7 @@ export function convertEntryToMessage(entry: JsonLogEntry, index: number): Parse
   }
 
   const structuredMessage = extractMessage(result, structured);
-  const value = typeof rawValue === 'string' ? formatJsonValue(rawValue) : JSON.stringify(rawValue);
+  const value = Object.keys(body).length > 0 ? JSON.stringify(body, null, 2) : formatJsonValue(rawValueStr);
 
   return {
     id: `json-${index}`,
@@ -177,6 +224,8 @@ export function convertEntryToMessage(entry: JsonLogEntry, index: number): Parse
     level,
     rawMessage,
     structuredMessage,
+    eventType,
+    flowName,
   };
 }
 

@@ -234,7 +234,9 @@ export default function JsonViewerPage() {
                             variant="secondary"
                             className="text-xs sm:text-sm bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
                           >
-                            {kafkaMessages.length} entr{kafkaMessages.length !== 1 ? 'ies' : 'y'}
+                            {filteredMessages.length === kafkaMessages.length
+                              ? `${kafkaMessages.length} entr${kafkaMessages.length !== 1 ? 'ies' : 'y'}`
+                              : `${filteredMessages.length} of ${kafkaMessages.length} entries`}
                           </Badge>
                         </div>
                       )}
@@ -247,8 +249,18 @@ export default function JsonViewerPage() {
                             placeholder="Search messages..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 h-10"
+                            className="pl-9 pr-9 h-10"
                           />
+                          {searchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setSearchQuery('')}
+                              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              aria-label="Clear search"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <Select
@@ -302,7 +314,15 @@ export default function JsonViewerPage() {
                 <CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col">
                   <div className="flex-1 min-h-0">
                     {kafkaMessages.length > 0 ? (
-                      <JsonMessageFlowGraph messages={filteredMessages} />
+                      <JsonMessageFlowGraph
+                        messages={filteredMessages}
+                        totalCount={kafkaMessages.length}
+                        onClearFilters={() => {
+                          setSearchQuery('');
+                          setFilterType('none');
+                          setFilterValue('');
+                        }}
+                      />
                     ) : (
                       <div className="h-full flex items-center justify-center text-muted-foreground">
                         <p className="text-sm">Upload a JSON file to visualize message flows</p>
