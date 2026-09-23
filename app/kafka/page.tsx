@@ -8,26 +8,23 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { useKafkaConnection } from '@/contexts/kafka-connection-context';
 import { KafkaMessage } from '@/lib/types/kafka';
 import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
-
-const STORAGE_KEYS = {
-  kafkaBroker: 'kafka-broker',
-  kafkaTopics: 'kafka-topics',
-  kafkaMessages: 'kafka-messages',
-};
-
-const MAX_STORED_MESSAGES = 200;
+import { useCallback, useMemo, useState } from 'react';
 
 export default function KafkaPage() {
-  // Kafka Listener state
-  const [kafkaBroker, setKafkaBroker] = useState('');
-  const [kafkaTopics, setKafkaTopics] = useState('');
-  const [kafkaMessages, setKafkaMessages] = useState<KafkaMessage[]>([]);
-  const [isKafkaConnected, setIsKafkaConnected] = useState(false);
+  // Kafka connection state is owned by KafkaConnectionProvider (mounted in the root layout)
+  // so the SSE connection keeps listening while navigating between pages.
+  const {
+    broker: kafkaBroker,
+    setMessages: setKafkaMessages,
+    topics: kafkaTopics,
+    messages: kafkaMessages,
+    isConnected: isKafkaConnected,
+    resendMessage,
+  } = useKafkaConnection();
   const [kafkaSearchQuery, setKafkaSearchQuery] = useState('');
   const [topicFilter, setTopicFilter] = useState<string | null>(null);
   const [isSendMessageExpanded, setIsSendMessageExpanded] = useState(false);
@@ -35,126 +32,17 @@ export default function KafkaPage() {
   // Pending message for send form (replaces window global)
   const [pendingSendMessage, setPendingSendMessage] = useState<KafkaMessage | null>(null);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedBroker = localStorage.getItem(STORAGE_KEYS.kafkaBroker);
-      const savedTopics = localStorage.getItem(STORAGE_KEYS.kafkaTopics);
-      const savedMessages = localStorage.getItem(STORAGE_KEYS.kafkaMessages);
-
-      if (savedBroker) setKafkaBroker(savedBroker);
-      if (savedTopics) setKafkaTopics(savedTopics);
-      if (savedMessages) {
-        try {
-          const parsed = JSON.parse(savedMessages) as Array<Omit<KafkaMessage, 'timestamp'> & { timestamp: string }>;
-          const messages: KafkaMessage[] = parsed.map((msg) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp),
-          }));
-          setKafkaMessages(messages);
-        } catch (error) {
-          console.warn('Failed to load saved messages from localStorage:', error);
-        }
-      }
-    }
-  }, []);
-
-  // Save Kafka broker to localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (kafkaBroker) {
-        localStorage.setItem(STORAGE_KEYS.kafkaBroker, kafkaBroker);
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.kafkaBroker);
-      }
-    }
-  }, [kafkaBroker]);
-
-  // Save Kafka topics to localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (kafkaTopics) {
-        localStorage.setItem(STORAGE_KEYS.kafkaTopics, kafkaTopics);
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.kafkaTopics);
-      }
-    }
-  }, [kafkaTopics]);
-
-  // Save Kafka messages to localStorage (capped at MAX_STORED_MESSAGES)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (kafkaMessages.length > 0) {
-        try {
-          const toStore = kafkaMessages.slice(0, MAX_STORED_MESSAGES);
-          const serialized = JSON.stringify(
-            toStore.map((msg) => ({
-              ...msg,
-              timestamp: msg.timestamp.toISOString(),
-            }))
-          );
-          localStorage.setItem(STORAGE_KEYS.kafkaMessages, serialized);
-        } catch (error) {
-          console.warn('Failed to save messages to localStorage:', error);
-        }
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.kafkaMessages);
-      }
-    }
-  }, [kafkaMessages]);
-
   // Derive unique topic list from received messages
   const uniqueTopics = useMemo(() => {
     const topics = new Set(kafkaMessages.map((m) => m.topic));
     return Array.from(topics).sort();
   }, [kafkaMessages]);
 
-  // Kafka handlers
-  const handleKafkaDisconnect = () => {
-    setIsKafkaConnected(false);
-  };
-
-  const handleKafkaClear = () => {
-    setKafkaBroker('');
-    setKafkaTopics('');
-    setKafkaMessages([]);
-    setKafkaSearchQuery('');
-    setTopicFilter(null);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(STORAGE_KEYS.kafkaBroker);
-      localStorage.removeItem(STORAGE_KEYS.kafkaTopics);
-      localStorage.removeItem(STORAGE_KEYS.kafkaMessages);
-    }
-  };
-
-  const handleResendMessage = useCallback(
-    async (message: KafkaMessage) => {
-      if (!kafkaBroker) {
-        toast.error('Missing Broker', { description: 'Please provide a broker endpoint' });
-        return;
-      }
-      try {
-        const response = await fetch('/api/kafka/produce', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            broker: kafkaBroker,
-            topic: message.topic,
-            key: message.key || null,
-            value: message.value,
-            headers: message.headers || null,
-          }),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Failed to resend message');
-        toast.success('Message Resent', {
-          description: `Message resent to ${message.topic} (partition: ${result.partition}, offset: ${result.offset})`,
-        });
-      } catch (error) {
-        toast.error('Resend Failed', { description: error instanceof Error ? error.message : 'Unknown error' });
-      }
+  const handleDeleteMessages = useCallback(
+    (messageIds: string[]) => {
+      setKafkaMessages((prev) => prev.filter((msg) => !messageIds.includes(msg.id)));
     },
-    [kafkaBroker]
+    [setKafkaMessages]
   );
 
   const handleUseMessageForSend = useCallback((message: KafkaMessage) => {
@@ -286,20 +174,7 @@ export default function KafkaPage() {
           <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full items-stretch">
             {/* Kafka Listener - Left Side */}
             <div className="w-full lg:w-[500px] lg:flex-shrink-0 self-start group rounded-3xl border border-slate-200/60 dark:border-slate-800/60 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl hover:shadow-xl transition-all duration-500 overflow-hidden">
-              <KafkaListener
-                broker={kafkaBroker}
-                setBroker={setKafkaBroker}
-                topics={kafkaTopics}
-                setTopics={setKafkaTopics}
-                messages={kafkaMessages}
-                setMessages={setKafkaMessages}
-                isConnected={isKafkaConnected}
-                setIsConnected={setIsKafkaConnected}
-                onDisconnect={handleKafkaDisconnect}
-                onClear={handleKafkaClear}
-                onResendMessage={handleResendMessage}
-                onUseMessageForSend={handleUseMessageForSend}
-              />
+              <KafkaListener />
             </div>
             {/* Message Flow Visualization and Send Message - Right Side */}
             <div className="w-full lg:flex-1 overflow-hidden h-full">
@@ -414,8 +289,9 @@ export default function KafkaPage() {
                           messages={filteredKafkaMessages}
                           searchQuery={kafkaSearchQuery}
                           topicFilter={topicFilter}
-                          onResendMessage={handleResendMessage}
+                          onResendMessage={resendMessage}
                           onUseMessageForSend={handleUseMessageForSend}
+                          onDeleteMessages={handleDeleteMessages}
                         />
                       </div>
                     </CardContent>

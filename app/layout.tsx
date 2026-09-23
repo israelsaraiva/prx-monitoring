@@ -1,5 +1,6 @@
 import { PageTransition } from '@/components/PageTransition';
 import { Toaster } from '@/components/ui/sonner';
+import { KafkaConnectionProvider } from '@/contexts/kafka-connection-context';
 import type { Metadata } from 'next';
 import { ThemeProvider } from 'next-themes';
 import './globals.css';
@@ -14,8 +15,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <PageTransition>{children}</PageTransition>
-          <Toaster />
+          <KafkaConnectionProvider>
+            <PageTransition>{children}</PageTransition>
+            <Toaster />
+          </KafkaConnectionProvider>
         </ThemeProvider>
       </body>
     </html>

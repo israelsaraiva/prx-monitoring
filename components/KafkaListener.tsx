@@ -2,50 +2,27 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { BrokerConfig, KafkaMessage } from '@/lib/types/kafka';
+import { useKafkaConnection } from '@/contexts/kafka-connection-context';
+import { BrokerConfig } from '@/lib/types/kafka';
 import { Edit, Loader2, Play, Plus, Save, Settings, Square, Trash2, X, XCircle, Zap } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-interface KafkaListenerProps {
-  broker: string;
-  setBroker: (value: string) => void;
-  topics: string;
-  setTopics: (value: string) => void;
-  messages: KafkaMessage[];
-  setMessages: (messages: KafkaMessage[] | ((prev: KafkaMessage[]) => KafkaMessage[])) => void;
-  isConnected: boolean;
-  setIsConnected: (connected: boolean) => void;
-  onDisconnect: () => void;
-  onClear: () => void;
-  onResendMessage?: (message: KafkaMessage) => void;
-  onUseMessageForSend?: (message: KafkaMessage) => void;
-}
-
-export function KafkaListener({
-  broker,
-  setBroker,
-  topics,
-  setTopics,
-  messages,
-  setMessages,
-  isConnected,
-  setIsConnected,
-  onDisconnect,
-  onClear,
-  onResendMessage,
-  onUseMessageForSend,
-}: KafkaListenerProps) {
-  const consumerIdRef = useRef<string | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const consumerRef = useRef<{ stop: () => Promise<void> } | null>(null);
-
-  // Connection loading state
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isReconnecting, setIsReconnecting] = useState(false);
-
-  // fromBeginning option
-  const [fromBeginning, setFromBeginning] = useState(false);
+export function KafkaListener() {
+  const {
+    broker,
+    setBroker,
+    topics,
+    setTopics,
+    messages,
+    setMessages,
+    isConnected,
+    isConnecting,
+    isReconnecting,
+    fromBeginning,
+    setFromBeginning,
+    connect,
+  } = useKafkaConnection();
 
   // Broker configuration management
   const [savedConfigs, setSavedConfigs] = useState<BrokerConfig[]>([]);
@@ -179,252 +156,6 @@ export function KafkaListener({
       description: 'Broker and topics set for local Docker Kafka instance',
     });
   };
-
-  const connect = async () => {
-    if (!broker || !topics) {
-      toast.error('Missing Information', {
-        description: 'Please provide both broker and topics',
-      });
-      return;
-    }
-
-    if (isConnected) {
-      await disconnect();
-      return;
-    }
-
-    setIsConnecting(true);
-
-    try {
-      const consumerId = `consumer-${Date.now()}`;
-      consumerIdRef.current = consumerId;
-
-      // Create EventSource FIRST to ensure it's ready before consumer starts
-      const eventSourceUrl = `/api/kafka/messages?consumerId=${consumerId}`;
-      const eventSource = new EventSource(eventSourceUrl);
-      eventSourceRef.current = eventSource;
-
-      // Set up message handler BEFORE waiting for connection
-      // This ensures messages are handled even if they arrive during connection
-      let connectionTestReceived = false;
-      let connectionResolve: (() => void) | null = null;
-      let connectionReject: ((error: Error) => void) | null = null;
-      let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
-
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          if (data.type === 'connection-test') {
-            connectionTestReceived = true;
-            if (connectionTimeout) {
-              clearTimeout(connectionTimeout);
-              connectionTimeout = null;
-            }
-            if (connectionResolve) {
-              connectionResolve();
-            }
-            return;
-          }
-
-          // Handle actual Kafka messages
-          const kafkaMessage: KafkaMessage = {
-            id: `${data.topic}-${data.partition}-${data.offset}`,
-            flowId: data.flowId || 'unknown',
-            timestamp: new Date(data.timestamp || Date.now()),
-            topic: data.topic,
-            partition: data.partition,
-            offset: data.offset,
-            key: data.key || null,
-            value: data.value || '',
-            headers: data.headers && Object.keys(data.headers).length > 0 ? data.headers : undefined,
-            flowIdSource: data.flowIdSource || 'none',
-          };
-
-          setMessages((prev) => [kafkaMessage, ...prev]);
-        } catch (error) {
-          console.error('Error parsing message:', error, event.data);
-        }
-      };
-
-      eventSource.onerror = () => {
-        if (eventSource.readyState === EventSource.CLOSED) {
-          if (connectionReject) {
-            connectionReject(new Error('EventSource connection failed'));
-          }
-          setIsConnecting(false);
-          setIsReconnecting(false);
-          setIsConnected(false);
-          toast.error('Connection Lost', {
-            description: 'Connection to message stream was lost. Please reconnect.',
-          });
-        } else if (eventSource.readyState === EventSource.CONNECTING && isConnected) {
-          // SSE is auto-reconnecting — show indicator but don't treat as fatal
-          setIsReconnecting(true);
-        }
-      };
-
-      // Wait for EventSource to be ready (connection-test message) before connecting to Kafka
-      // This ensures the server-side stream is registered and ready to receive messages
-      await new Promise<void>((resolve, reject) => {
-        connectionResolve = resolve;
-        connectionReject = reject;
-
-        connectionTimeout = setTimeout(() => {
-          if (!connectionTestReceived) {
-            eventSource.close();
-            reject(new Error('EventSource connection timeout - did not receive connection-test message'));
-          }
-        }, 10000);
-
-        // Check if we already received the test message (unlikely but possible)
-        if (connectionTestReceived) {
-          if (connectionTimeout) {
-            clearTimeout(connectionTimeout);
-            connectionTimeout = null;
-          }
-          resolve();
-        }
-      });
-
-      // Now connect to Kafka after EventSource is ready
-      const response = await fetch('/api/kafka/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ broker, topics, consumerId, fromBeginning }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        eventSource.close();
-        throw new Error(error.error || 'Failed to connect');
-      }
-
-      consumerRef.current = {
-        stop: async () => {
-          eventSource.close();
-          if (consumerIdRef.current) {
-            const consumerIdToDelete = consumerIdRef.current;
-            consumerIdRef.current = null;
-            try {
-              const response = await fetch(`/api/kafka/connect?consumerId=${consumerIdToDelete}`, {
-                method: 'DELETE',
-              });
-              if (!response.ok && response.status !== 404) {
-                const error = await response.json().catch(() => ({ error: response.statusText }));
-                console.error('Failed to delete consumer:', error);
-              }
-            } catch (error) {
-              console.error('Error deleting consumer:', error);
-            }
-          }
-        },
-      };
-
-      setIsConnected(true);
-      setIsConnecting(false);
-      setIsReconnecting(false);
-      toast.success('Connected', {
-        description: `Successfully connected to Kafka broker${fromBeginning ? ' (from beginning)' : ''}`,
-      });
-    } catch (error) {
-      setIsConnecting(false);
-      setIsReconnecting(false);
-      setIsConnected(false);
-
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-      let userMessage = 'Failed to connect to Kafka broker.';
-      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ENOTFOUND')) {
-        userMessage =
-          'Cannot connect to Kafka broker. Please verify the broker address is correct and the broker is running.';
-      } else if (errorMessage.includes('timeout')) {
-        userMessage = 'Connection timeout. The broker may be unreachable or taking too long to respond.';
-      } else if (errorMessage.includes('Failed to connect')) {
-        userMessage = errorMessage;
-      } else if (errorMessage.includes('Failed to subscribe')) {
-        userMessage = errorMessage;
-      } else if (errorMessage.includes('Invalid broker')) {
-        userMessage = 'Invalid broker configuration. Please check the broker address format.';
-      } else if (errorMessage.includes('No valid topics')) {
-        userMessage = 'No valid topics provided. Please enter at least one topic name.';
-      }
-
-      toast.error('Connection Failed', {
-        description: userMessage,
-      });
-    }
-  };
-
-  const disconnect = async () => {
-    if (consumerRef.current) {
-      await consumerRef.current.stop();
-      consumerRef.current = null;
-    }
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    setIsConnected(false);
-    setIsReconnecting(false);
-    onDisconnect();
-    toast.info('Disconnected', {
-      description: 'Kafka consumer disconnected',
-    });
-  };
-
-  const resendMessage = useCallback(
-    async (message: KafkaMessage) => {
-      if (!broker) {
-        toast.error('Missing Broker', {
-          description: 'Please provide a broker endpoint',
-        });
-        return;
-      }
-
-      try {
-        const response = await fetch('/api/kafka/produce', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            broker,
-            topic: message.topic,
-            key: message.key || null,
-            value: message.value,
-            headers: message.headers || null,
-          }),
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.error || 'Failed to resend message');
-        }
-
-        toast.success('Message Resent', {
-          description: `Message resent to ${message.topic} (partition: ${result.partition}, offset: ${result.offset})`,
-        });
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        toast.error('Resend Failed', {
-          description: errorMessage,
-        });
-      }
-    },
-    [broker]
-  );
-
-  useEffect(() => {
-    return () => {
-      // Only cleanup on unmount, not on tab switch
-      if (consumerRef.current) {
-        consumerRef.current.stop();
-      }
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-    };
-  }, []);
 
   return (
     <div className="flex flex-col h-full bg-transparent">

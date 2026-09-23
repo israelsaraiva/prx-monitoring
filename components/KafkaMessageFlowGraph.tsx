@@ -17,6 +17,7 @@ import {
   Repeat,
   Send,
   Server,
+  Trash2,
   X,
   XCircle,
 } from 'lucide-react';
@@ -64,6 +65,7 @@ interface KafkaMessageFlowGraphProps {
   topicFilter?: string | null;
   onResendMessage?: (message: KafkaMessage) => void;
   onUseMessageForSend?: (message: KafkaMessage) => void;
+  onDeleteMessages?: (messageIds: string[]) => void;
 }
 
 interface FlowGroup {
@@ -79,11 +81,13 @@ export function KafkaMessageFlowGraph({
   topicFilter,
   onResendMessage,
   onUseMessageForSend,
+  onDeleteMessages,
 }: KafkaMessageFlowGraphProps) {
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [expandedRawMessages, setExpandedRawMessages] = useState<Set<string>>(new Set());
   const [expandedFlowIds, setExpandedFlowIds] = useState<Set<string>>(new Set());
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+  const [selectedFlowIds, setSelectedFlowIds] = useState<Set<string>>(new Set());
 
   const flowGroups = useMemo(() => {
     const filteredMessages = topicFilter ? messages.filter((m) => m.topic === topicFilter) : messages;
@@ -171,6 +175,72 @@ export function KafkaMessageFlowGraph({
   };
 
   const clearSelectedMessages = () => setSelectedMessageIds(new Set());
+
+  const toggleFlowSelected = (flowId: string) => {
+    setSelectedFlowIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(flowId)) {
+        newSet.delete(flowId);
+      } else {
+        newSet.add(flowId);
+      }
+      return newSet;
+    });
+  };
+
+  const clearSelectedFlows = () => setSelectedFlowIds(new Set());
+
+  const deleteMessage = (msg: KafkaMessage) => {
+    if (!window.confirm('Delete this message?')) return;
+    onDeleteMessages?.([msg.id]);
+    setSelectedMessageIds((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(msg.id);
+      return newSet;
+    });
+  };
+
+  const deleteFlowGroup = (group: FlowGroup) => {
+    if (!window.confirm(`Delete flow ${group.flowId} and its ${group.messages.length} message(s)?`)) return;
+    const messageIds = group.messages.map((msg) => msg.id);
+    onDeleteMessages?.(messageIds);
+    setSelectedMessageIds((prev) => {
+      const newSet = new Set(prev);
+      messageIds.forEach((id) => newSet.delete(id));
+      return newSet;
+    });
+    setSelectedFlowIds((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(group.flowId);
+      return newSet;
+    });
+  };
+
+  const deleteSelectedMessages = () => {
+    if (selectedMessageIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedMessageIds.size} selected message(s)?`)) return;
+    onDeleteMessages?.(Array.from(selectedMessageIds));
+    clearSelectedMessages();
+  };
+
+  const deleteSelectedFlows = () => {
+    if (selectedFlowIds.size === 0) return;
+    const flowsToDelete = flowGroups.filter((group) => selectedFlowIds.has(group.flowId));
+    const messageIds = flowsToDelete.flatMap((group) => group.messages.map((msg) => msg.id));
+    if (
+      !window.confirm(
+        `Delete ${selectedFlowIds.size} selected flow${selectedFlowIds.size !== 1 ? 's' : ''} and ${messageIds.length} message(s)?`
+      )
+    )
+      return;
+    onDeleteMessages?.(messageIds);
+    setSelectedMessageIds((prev) => {
+      const newSet = new Set(prev);
+      messageIds.forEach((id) => newSet.delete(id));
+      return newSet;
+    });
+    clearSelectedFlows();
+  };
 
   const copySelectedMessagesToClipboard = async () => {
     try {
@@ -262,7 +332,39 @@ export function KafkaMessageFlowGraph({
             <Copy className="h-3 w-3 mr-1" />
             Copy Selected
           </Button>
+          <Button
+            onClick={deleteSelectedMessages}
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs border-red-300/60 text-red-700 dark:border-red-700/60 dark:text-red-300 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-900/30"
+          >
+            <Trash2 className="h-3 w-3 mr-1" />
+            Delete Selected
+          </Button>
           <Button onClick={clearSelectedMessages} variant="ghost" size="sm" className="h-8 text-xs">
+            <X className="h-3 w-3 mr-1" />
+            Clear
+          </Button>
+        </div>
+      )}
+      {selectedFlowIds.size > 0 && (
+        <div className="sticky top-0 z-10 flex items-center gap-2 flex-wrap bg-background/95 backdrop-blur px-2 py-2 rounded-md border border-purple-200/50 dark:border-purple-800/30">
+          <Badge
+            variant="secondary"
+            className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+          >
+            {selectedFlowIds.size} flow{selectedFlowIds.size !== 1 ? 's' : ''} selected
+          </Badge>
+          <Button
+            onClick={deleteSelectedFlows}
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs border-red-300/60 text-red-700 dark:border-red-700/60 dark:text-red-300 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-900/30"
+          >
+            <Trash2 className="h-3 w-3 mr-1" />
+            Delete Selected Flows
+          </Button>
+          <Button onClick={clearSelectedFlows} variant="ghost" size="sm" className="h-8 text-xs">
             <X className="h-3 w-3 mr-1" />
             Clear
           </Button>
@@ -270,11 +372,19 @@ export function KafkaMessageFlowGraph({
       )}
       {flowGroups.map((group) => {
         const isFlowExpanded = expandedFlowIds.has(group.flowId);
+        const isFlowSelected = selectedFlowIds.has(group.flowId);
 
         return (
           <div key={group.flowId} className="space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 pb-2 border-b border-purple-200/50 dark:border-purple-800/30">
               <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                <input
+                  type="checkbox"
+                  checked={isFlowSelected}
+                  onChange={() => toggleFlowSelected(group.flowId)}
+                  className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500 cursor-pointer flex-shrink-0"
+                  aria-label={`Select flow ${group.flowId}`}
+                />
                 <div className="h-2 w-2 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 animate-pulse shadow-sm flex-shrink-0" />
                 <div className="flex items-center gap-1 sm:gap-2 min-w-0">
                   <Hash className="h-3 w-3 sm:h-4 sm:w-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
@@ -310,6 +420,16 @@ export function KafkaMessageFlowGraph({
                 >
                   <Download className="h-3 w-3 mr-1" />
                   Download
+                </Button>
+                <Button
+                  onClick={() => deleteFlowGroup(group)}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs border-red-300/60 text-red-700 dark:border-red-700/60 dark:text-red-300 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-900/30"
+                  title="Delete this flow and all its messages"
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Delete
                 </Button>
                 <Badge
                   variant="secondary"
@@ -455,6 +575,15 @@ export function KafkaMessageFlowGraph({
                                   >
                                     <Repeat className="h-3 w-3 mr-1" />
                                     Resend
+                                  </Button>
+                                  <Button
+                                    onClick={() => deleteMessage(msg)}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs border-red-300/60 text-red-700 dark:border-red-700/60 dark:text-red-300 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-900/30"
+                                    title="Delete this message"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
                                   </Button>
                                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                     <Clock className="h-3 w-3" />
