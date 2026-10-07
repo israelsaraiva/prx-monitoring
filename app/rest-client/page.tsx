@@ -658,6 +658,7 @@ export default function RestClientPage() {
   const [showInlineSave, setShowInlineSave] = useState(false);
   const [inlineSaveCollectionId, setInlineSaveCollectionId] = useState('');
   const [inlineSaveName, setInlineSaveName] = useState('');
+  const [inlineSaveNewCollectionName, setInlineSaveNewCollectionName] = useState('');
   const [renamingRequestId, setRenamingRequestId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renameDescriptionValue, setRenameDescriptionValue] = useState('');
@@ -2541,6 +2542,7 @@ export default function RestClientPage() {
                       setShowInlineSave((current) => !current);
                       setInlineSaveName(extractHostname(activeTab?.url ?? ''));
                       setInlineSaveCollectionId(collections[0]?.id ?? '__new__');
+                      setInlineSaveNewCollectionName('');
                     }}
                     className="h-8 w-full rounded border border-gray-300 dark:border-[#333] bg-gray-100 dark:bg-[#202020] text-xs font-medium text-gray-900 dark:text-white transition-colors hover:bg-gray-200 dark:hover:bg-[#2a2a2a]"
                   >
@@ -2558,8 +2560,17 @@ export default function RestClientPage() {
                               {collection.name}
                             </SelectItem>
                           ))}
+                          <SelectItem value="__new__">Create new collection</SelectItem>
                         </SelectContent>
                       </Select>
+                      {inlineSaveCollectionId === '__new__' && (
+                        <Input
+                          value={inlineSaveNewCollectionName}
+                          onChange={(event) => setInlineSaveNewCollectionName(event.target.value)}
+                          placeholder="New collection name"
+                          className="h-8 border-gray-300 dark:border-[#2a2a2a] bg-white dark:bg-[#1e1e1e] text-xs text-gray-700 dark:text-slate-300 placeholder:text-gray-400 dark:placeholder:text-slate-600 focus-visible:ring-[#5b5bff]"
+                        />
+                      )}
                       <Input
                         value={inlineSaveName}
                         onChange={(event) => setInlineSaveName(event.target.value)}
@@ -2573,6 +2584,7 @@ export default function RestClientPage() {
                             saveRequestToCollection({
                               collectionId: inlineSaveCollectionId,
                               requestName: inlineSaveName,
+                              newCollectionName: inlineSaveNewCollectionName,
                             })
                           ) {
                             setShowInlineSave(false);
@@ -3043,6 +3055,23 @@ export default function RestClientPage() {
                         className="flex w-full items-center rounded px-3 py-2 text-left text-xs text-gray-700 dark:text-slate-300 transition-colors hover:bg-gray-100 dark:hover:bg-[#1f1f1f]"
                       >
                         Send &amp; Save to Collection
+                      </button>
+                      <div className="my-1 border-t border-gray-200 dark:border-[#2a2a2a]" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSendMenuOpen(false);
+                          setSaveDialog({
+                            open: true,
+                            collectionId: collections[0]?.id ?? '__new__',
+                            newCollectionName: '',
+                            requestName: extractHostname(activeTab?.url ?? ''),
+                            description: '',
+                          });
+                        }}
+                        className="flex w-full items-center rounded px-3 py-2 text-left text-xs text-gray-700 dark:text-slate-300 transition-colors hover:bg-gray-100 dark:hover:bg-[#1f1f1f]"
+                      >
+                        Save (without sending)
                       </button>
                     </div>
                   )}

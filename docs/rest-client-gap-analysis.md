@@ -2,6 +2,8 @@
 
 _Deep investigation of `/rest-client` — what works, what is present in the UI but broken or incomplete, and what is missing entirely._
 
+> **Update (2026-10-07):** All 8 bugs listed below have since been fixed (auth/params/form-data export-import, env var interpolation in code snippets, Environments nav link, body-type label, request cancel button, and the inline "Add new" save panel). The "Bugs" section is kept for historical context; see the "Missing Features" section below for what is still genuinely absent.
+
 ---
 
 ## What Is Fully Implemented
